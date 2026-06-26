@@ -1,0 +1,55 @@
+# --- Build outputs ---
+obj/
+output/
+build/build/
+build/manual_link/
+*.asi
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.idb
+*.lib
+*.exp
+
+# --- Visual Studio ---
+.vs/
+*.user
+*.suo
+
+# --- Python ---
+__pycache__/
+*.pyc
+
+# --- Archipelago generation outputs ---
+out/
+out2/
+out3/
+out4/
+out_*/
+dist/
+*.zip
+
+# --- Runtime state (never commit) ---
+III.MissionSelector.state.ini
+III.MissionSelector.last_skin.txt
+*.log
+III.Archipelago.*.json
+
+# --- Personal connection settings (use AP_connexion.txt.example) ---
+AP_connexion.txt
+
+# --- Backups ---
+*.bak
+*.bak_*
+
+# --- Rockstar-derived / game content (do NOT commit) ---
+data/main.scm
+data/main_ap.scm
+*.txd
+*.dff
+*.img
+*.col
+models/
+skins/

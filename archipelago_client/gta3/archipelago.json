@@ -1,0 +1,8 @@
+{
+  "game": "Grand Theft Auto III",
+  "minimum_ap_version": "0.6.6",
+  "authors": ["Pierre", "Codex"],
+  "world_version": "0.2.0",
+  "compatible_version": 2,
+  "version": 2
+}

@@ -1,0 +1,11 @@
+name: GTA3Player
+description: GTA3 mission-by-mission AP run
+game: Grand Theft Auto III
+
+requires:
+  version: 0.6.6
+
+Grand Theft Auto III:
+  ordered_chains: true
+  progression_balancing: 50
+  accessibility: full

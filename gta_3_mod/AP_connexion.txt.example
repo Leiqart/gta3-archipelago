@@ -1,0 +1,7 @@
+; Archipelago connection settings
+; Copy this file to "AP_connexion.txt" (next to the game exe) and edit it.
+; ap_server accepts host:port, ws://host:port or wss://host:port
+ap_autoconnect=1
+ap_server=archipelago.gg:00000
+ap_slot=YourSlotName
+ap_password=

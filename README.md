@@ -13,7 +13,7 @@ multiworld decides.
 
 ## What is the goal?
 
-Reach and complete **Catalina's final mission** (the *Victory* event).
+Reach and complete **Catalina's final mission** (*The Exchange*).
 
 ## What gets shuffled?
 

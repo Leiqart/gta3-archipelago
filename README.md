@@ -24,7 +24,6 @@ Reach and complete **Catalina's final mission** (the *Victory* event).
 
 ## Installation
 
-Easiest path: the **ready-to-use pack** in [`release/GTA3-Archipelago/`](release/GTA3-Archipelago/).
 Copy the contents of `gta3_game_files/` into your GTA III folder, edit `AP_connexion.txt`, then
 generate your seed with `archipelago/gta3.apworld` + `GTA3.yaml`.
 

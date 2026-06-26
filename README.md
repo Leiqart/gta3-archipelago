@@ -29,6 +29,7 @@ How to install.
 ### 1. Install the game files
 
 Open the gta3_game_files folder and drag & drop its entire content into your game folder (where GTA3.exe is located).
+(Make sure you have version 1.1 of GTA 3; you can easily find it online.)
 
 ### 2. Configure your connection
 

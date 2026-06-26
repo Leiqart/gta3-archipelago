@@ -24,8 +24,32 @@ Reach and complete **Catalina's final mission** (the *Victory* event).
 
 ## Installation
 
-Copy the contents of `gta3_game_files/` into your GTA III folder, edit `AP_connexion.txt`, then
-generate your seed with `archipelago/gta3.apworld` + `GTA3.yaml`.
+How to install.
+
+### 1. Install the game files
+
+Open the gta3_game_files folder and drag & drop its entire content into your game folder (where GTA3.exe is located).
+
+### 2. Configure your connection
+
+Open AP_connexion.txt (now next to the game .exe) and edit it with your room's info:
+
+ap_autoconnect=1
+ap_server=archipelago.gg:12345 ; your room's address and port
+ap_slot=YourSlotName ; your player/slot name
+ap_password= ; leave empty if there is no password
+
+### 3. Install the APWorld
+Double-click gta3.apworld to install it into Archipelago.
+
+### 4. Set up your YAML
+Open GTA3.yaml and edit it to your liking:
+
+Set your player name (must match ap_slot above)
+Adjust the game options
+Then place the YAML in your Archipelago Players folder and generate / host your game as usual.
+
+### 5. Play !
 
 ## Repository layout
 

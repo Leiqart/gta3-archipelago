@@ -20,16 +20,28 @@
 namespace {
     using ProcessFn = void(__fastcall*)(void* self, void* edx);
     using CTextGetFn = const wchar_t* (__fastcall*)(void* self, void* edx, const char* key);
+    using CutsceneModelLookupFn = void* (__cdecl*)(const char* name);
+    using CutsceneCreateObjectFn = void* (__cdecl*)(int modelId);
+    using CutsceneAddHeadFn = void* (__cdecl*)(void* parentObject, int modelId);
+    using CutsceneSetHeadAnimFn = void(__cdecl*)(const char* animName, void* headObject);
 
     ProcessFn                   g_origProcess         = nullptr;
     ScriptRuntime::StartNewScriptFn g_origStartNewScript = nullptr;
     CTextGetFn                  g_origCTextGet        = nullptr;
+    CutsceneModelLookupFn       g_origCutsceneModelLookup = nullptr;
+    CutsceneCreateObjectFn      g_origCutsceneCreateObject = nullptr;
+    CutsceneAddHeadFn           g_origCutsceneAddHead = nullptr;
+    CutsceneSetHeadAnimFn       g_origCutsceneSetHeadAnim = nullptr;
     int                         g_processCount        = 0;
     MenuPage                    g_lastPage            = static_cast<MenuPage>(-1);
     bool                        g_minHookInitialized  = false;
     bool                        g_processHookEnabled  = false;
     bool                        g_scriptHookEnabled   = false;
     bool                        g_textHookEnabled     = false;
+    bool                        g_cutsceneModelHookEnabled = false;
+    bool                        g_cutsceneHeadHooksEnabled = false;
+    bool                        g_cutscenePlayerAliasLogged = false;
+    void*                       g_cutscenePlayerObject = nullptr;
 
     // GTA III SCM opcode 0x004E = TERMINATE_THIS_SCRIPT. When a brand-new
     // mission script starts and its very first byte-pair is this opcode,
@@ -366,6 +378,7 @@ namespace {
         PlayerRuntime::TryApplyPlayerPersistence();
         PlayerRuntime::TrySyncStoryUnlockState();
         PlayerRuntime::TryApplyPostLaunchStreamFlush();
+        PlayerRuntime::TryApplySelectedCutscenePlayerSkin();
         PlayerRuntime::TryApplyIntroTeleportWatch();
         PlayerRuntime::TryApplyMissionCompletionWatch();
         PlayerRuntime::PushMapStateToScript();
@@ -450,13 +463,11 @@ namespace {
                 break;
             }
         }
-        // PatchClaudeOutfitTriggers rewrites "UNDRESS_CHAR ... PLAYER" -> PLAYERX
-        // so Claude wears the AP skin. EXEMPT INTRO/EIGHT: these scripts use
-        // exact cutscene model bindings; 8ball.sc already uses PLAYERX
-        // for gameplay and deliberately swaps to the base "player" model for the
-        // l1_lg cutscene (its anim requires a model literally named "player").
-        // Rewriting that swap to PLAYERX would crash the cutscene (null model
-        // association at 0x004011C4).
+        // Keep the AP outfit during normal missions. Cutscene animation groups
+        // still ask for a literal "player" model; Hooked_Cutscene_GetModelFromName
+        // aliases that missing association to PLAYERX without changing Claude's
+        // visible skin. INTRO/EIGHT remain exempt because their SCM already owns
+        // the prison/base/AP outfit transitions explicitly.
         if (name[0] == 0 ||
             (_strnicmp(name, "INTRO", 5) != 0 &&
              _strnicmp(name, "EIGHT", 5) != 0)) {
@@ -524,7 +535,7 @@ namespace {
                 bytecode[1] = kTerminateThisScriptHi;
                 if (markerMode && markerEntry) {
                     // Tell the player WHY nothing happened on the marker.
-                    PlayerRuntime::QueueMarkerBlockedToast();
+                    PlayerRuntime::QueueMarkerBlockedToast(markerEntry);
                     Logger::Log("Engine marker launch BLOCKED: script='%.8s' key='%.8s' unlocked=%d bugged=%d",
                                 name,
                                 markerEntry->displayKey ? markerEntry->displayKey : "",
@@ -604,6 +615,132 @@ namespace {
     // every other key. Engines call this 700+ times per frame for the
     // pause menu, so the check is intentionally minimal: a single strncmp
     // against a short list of our overridden keys.
+    bool IsPlayerCutsceneModelName(const char* name) {
+        if (!name || _strnicmp(name, "player", 6) != 0) {
+            return false;
+        }
+        // The vanilla helper ignores numeric suffixes on animation/model names.
+        // Preserve that behaviour for names such as player1, but never alias
+        // PLAYERP or another genuinely different model.
+        for (const char* tail = name + 6; *tail; ++tail) {
+            if (*tail < '0' || *tail > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool IsNormalApMissionCutscene() {
+        return RunState::LastLaunchedMission() > 21 &&
+               !PlayerRuntime::IsIntroSequencePresentationActive() &&
+               !PlayerRuntime::IsGiveMeLibertyPhaseActive();
+    }
+
+    void* __cdecl Hooked_Cutscene_CreateObject(int modelId) {
+        void* object = g_origCutsceneCreateObject(modelId);
+        if (modelId == 0) { // PED_PLAYER
+            g_cutscenePlayerObject = IsNormalApMissionCutscene() ? object : nullptr;
+            if (g_cutscenePlayerObject) {
+                Logger::Log("Cutscene PED_PLAYER object tracked: %p", object);
+            }
+        }
+        return object;
+    }
+
+    void* __cdecl Hooked_Cutscene_AddHead(void* parentObject, int modelId) {
+        if (parentObject && parentObject == g_cutscenePlayerObject &&
+            IsNormalApMissionCutscene()) {
+            // Returning the parent gives the SCM a valid object-pool handle for
+            // its following SET_CUTSCENE_HEAD_ANIM command, while deliberately
+            // avoiding CCutsceneHead's constructor that hides the skin's head.
+            Logger::Log("Claude PLAYERH suppressed: parent=%p model=%d",
+                        parentObject,
+                        modelId);
+            return parentObject;
+        }
+        return g_origCutsceneAddHead(parentObject, modelId);
+    }
+
+    void __cdecl Hooked_Cutscene_SetHeadAnim(const char* animName, void* headObject) {
+        if (headObject && headObject == g_cutscenePlayerObject &&
+            IsNormalApMissionCutscene()) {
+            Logger::Log("Claude head animation skipped: '%s' object=%p",
+                        animName ? animName : "",
+                        headObject);
+            return;
+        }
+        g_origCutsceneSetHeadAnim(animName, headObject);
+    }
+
+    bool InstallCutsceneHeadHooks() {
+        void* createAddress = GameAddr::Translate(GameAddr::Cutscene_CreateObject);
+        void* addAddress = GameAddr::Translate(GameAddr::Cutscene_AddHead);
+        void* animAddress = GameAddr::Translate(GameAddr::Cutscene_SetHeadAnim);
+        if (MH_CreateHook(createAddress,
+                          &Hooked_Cutscene_CreateObject,
+                          reinterpret_cast<void**>(&g_origCutsceneCreateObject)) != MH_OK ||
+            MH_CreateHook(addAddress,
+                          &Hooked_Cutscene_AddHead,
+                          reinterpret_cast<void**>(&g_origCutsceneAddHead)) != MH_OK ||
+            MH_CreateHook(animAddress,
+                          &Hooked_Cutscene_SetHeadAnim,
+                          reinterpret_cast<void**>(&g_origCutsceneSetHeadAnim)) != MH_OK) {
+            Logger::Log("Cutscene head hooks creation failed");
+            MH_RemoveHook(createAddress);
+            MH_RemoveHook(addAddress);
+            MH_RemoveHook(animAddress);
+            return false;
+        }
+        if (MH_EnableHook(createAddress) != MH_OK ||
+            MH_EnableHook(addAddress) != MH_OK ||
+            MH_EnableHook(animAddress) != MH_OK) {
+            Logger::Log("Cutscene head hooks enable failed");
+            MH_DisableHook(createAddress);
+            MH_DisableHook(addAddress);
+            MH_DisableHook(animAddress);
+            MH_RemoveHook(createAddress);
+            MH_RemoveHook(addAddress);
+            MH_RemoveHook(animAddress);
+            return false;
+        }
+        g_cutsceneHeadHooksEnabled = true;
+        return true;
+    }
+    void* __cdecl Hooked_Cutscene_GetModelFromName(const char* name) {
+        void* model = g_origCutsceneModelLookup(name);
+        if (!IsPlayerCutsceneModelName(name)) {
+            return model;
+        }
+
+        // INTRO/Give Me Liberty own their PLAYER/PLAYERP transitions. Normal AP
+        // missions must always animate the live PLAYERX clump, even when a
+        // mission (notably LUIGI2) explicitly loaded a second literal PLAYER
+        // model. Returning that successfully found model is what displayed the
+        // brown/alternate Claude in the cutscene.
+        if (RunState::LastLaunchedMission() <= 21 ||
+            PlayerRuntime::IsIntroSequencePresentationActive() ||
+            PlayerRuntime::IsGiveMeLibertyPhaseActive()) {
+            return model;
+        }
+
+        PlayerRuntime::QueueCutscenePlayerSkinApply(name);
+        if (PlayerRuntime::g_secondaryPlayerSkinActive && model) {
+            return model;
+        }
+
+        void* playerx = g_origCutsceneModelLookup("playerx");
+        if (playerx) {
+            if (!g_cutscenePlayerAliasLogged) {
+                g_cutscenePlayerAliasLogged = true;
+                Logger::Log("Cutscene model forced: '%s' (%p) -> PLAYERX (%p)",
+                            name,
+                            model,
+                            playerx);
+            }
+            return playerx;
+        }
+        return model;
+    }
     const wchar_t* __fastcall Hooked_CText_Get(void* self, void* edx, const char* key) {
         if (key) {
             const wchar_t* override = TextOverrides::Lookup(key);
@@ -678,6 +815,36 @@ bool Hooks::Init() {
     }
     g_scriptHookEnabled = true;
 
+    if (MH_CreateHook(GameAddr::Translate(GameAddr::Cutscene_GetModelFromName),
+                      &Hooked_Cutscene_GetModelFromName,
+                      reinterpret_cast<void**>(&g_origCutsceneModelLookup)) != MH_OK) {
+        Logger::Log("MH_CreateHook failed for cutscene model alias");
+        MH_DisableHook(GameAddr::Translate(GameAddr::CTheScripts_StartNewScript));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::CTheScripts_StartNewScript));
+        g_scriptHookEnabled = false;
+        MH_DisableHook(GameAddr::Translate(GameAddr::CMenuManager_Process));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::CMenuManager_Process));
+        g_processHookEnabled = false;
+        MH_Uninitialize();
+        g_minHookInitialized = false;
+        return false;
+    }
+    if (MH_EnableHook(GameAddr::Translate(GameAddr::Cutscene_GetModelFromName)) != MH_OK) {
+        Logger::Log("MH_EnableHook failed for cutscene model alias");
+        MH_RemoveHook(GameAddr::Translate(GameAddr::Cutscene_GetModelFromName));
+        MH_DisableHook(GameAddr::Translate(GameAddr::CTheScripts_StartNewScript));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::CTheScripts_StartNewScript));
+        g_scriptHookEnabled = false;
+        MH_DisableHook(GameAddr::Translate(GameAddr::CMenuManager_Process));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::CMenuManager_Process));
+        g_processHookEnabled = false;
+        MH_Uninitialize();
+        g_minHookInitialized = false;
+        return false;
+    }
+    g_cutsceneModelHookEnabled = true;
+    InstallCutsceneHeadHooks();
+
     if (MH_CreateHook(GameAddr::Translate(GameAddr::CText_Get),
                       &Hooked_CText_Get,
                       reinterpret_cast<void**>(&g_origCTextGet)) != MH_OK) {
@@ -689,7 +856,8 @@ bool Hooks::Init() {
         g_textHookEnabled = true;
     }
 
-    Logger::Log("Hooks enabled: menu process, StartNewScript%s",
+    Logger::Log("Hooks enabled: menu process, StartNewScript, cutscene PLAYERX alias%s%s",
+                g_cutsceneHeadHooksEnabled ? ", Claude head passthrough" : "",
                 g_textHookEnabled ? ", CText::Get" : "");
     return true;
 }
@@ -703,6 +871,21 @@ void Hooks::Shutdown() {
         MH_DisableHook(GameAddr::Translate(GameAddr::CText_Get));
         MH_RemoveHook(GameAddr::Translate(GameAddr::CText_Get));
         g_textHookEnabled = false;
+    }
+    if (g_cutsceneHeadHooksEnabled) {
+        MH_DisableHook(GameAddr::Translate(GameAddr::Cutscene_CreateObject));
+        MH_DisableHook(GameAddr::Translate(GameAddr::Cutscene_AddHead));
+        MH_DisableHook(GameAddr::Translate(GameAddr::Cutscene_SetHeadAnim));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::Cutscene_CreateObject));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::Cutscene_AddHead));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::Cutscene_SetHeadAnim));
+        g_cutsceneHeadHooksEnabled = false;
+        g_cutscenePlayerObject = nullptr;
+    }
+    if (g_cutsceneModelHookEnabled) {
+        MH_DisableHook(GameAddr::Translate(GameAddr::Cutscene_GetModelFromName));
+        MH_RemoveHook(GameAddr::Translate(GameAddr::Cutscene_GetModelFromName));
+        g_cutsceneModelHookEnabled = false;
     }
     if (g_scriptHookEnabled) {
         MH_DisableHook(GameAddr::Translate(GameAddr::CTheScripts_StartNewScript));

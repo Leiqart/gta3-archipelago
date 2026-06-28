@@ -330,33 +330,30 @@ namespace PlayerRuntime {
         const bool down = (GetAsyncKeyState(DebugKeys::Key("cycle_player_skin")) & 0x8000) != 0;
         if (down && !g_cyclePlayerSkinKeyDown) {
             if (!ScriptRuntime::HasLiveScriptEngine() || !PlayerPed()) {
-                Logger::Log("Cycle player skin: script engine/player not live, ignoring");
+                Logger::Log("Player skin toggle: script engine/player not live, ignoring");
             } else {
-                const PlayerSkinCandidate& skin = kPlayerSkinCandidates[g_playerSkinCycleIndex];
-                if (LaunchApplyPlayerSkinStub(skin.name, false, "manual cycle key")) {
+                const bool useSecondary = !g_secondaryPlayerSkinActive;
+                const char* skinName = useSecondary ? "PLAYER" : "PLAYERX";
+                if (LaunchApplyPlayerSkinStub(skinName, false, "manual O skin toggle")) {
+                    g_secondaryPlayerSkinActive = useSecondary;
                     g_bootOutfitRestoreDone = true; // do not auto-restore over the manual test
                     g_bootOutfitSettleFrames = 0;
 
                     char toast[64] = {};
-                    std::snprintf(toast, sizeof(toast), "SKIN: %s", skin.name);
+                    std::snprintf(toast, sizeof(toast), "SKIN: %s (%s)",
+                                  useSecondary ? "SECONDARY" : "NORMAL",
+                                  skinName);
                     TextOverrides::SetBridgeToast(toast);
                     LaunchPrintNowStub("APBRG", 3000);
-                    Logger::Log("Cycle player skin: applied '%s' (%d/%d)",
-                                skin.name,
-                                g_playerSkinCycleIndex + 1,
-                                static_cast<int>(sizeof(kPlayerSkinCandidates) /
-                                                 sizeof(kPlayerSkinCandidates[0])));
-                    SaveLastPlayerSkinTest(skin.name);
-                    g_playerSkinCycleIndex =
-                        (g_playerSkinCycleIndex + 1) %
-                        static_cast<int>(sizeof(kPlayerSkinCandidates) /
-                                         sizeof(kPlayerSkinCandidates[0]));
+                    Logger::Log("Player skin toggle: applied '%s' (%s)",
+                                skinName,
+                                useSecondary ? "secondary" : "normal");
+                    SaveLastPlayerSkinTest(skinName);
                 }
             }
         }
         g_cyclePlayerSkinKeyDown = down;
     }
-
     inline void TryFireDeathKey() {
         const bool down = (GetAsyncKeyState(DebugKeys::Key("death")) & 0x8000) != 0;
         if (down && !g_deathKeyDown) {

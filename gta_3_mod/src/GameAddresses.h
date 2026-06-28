@@ -16,6 +16,19 @@ namespace GameAddr {
     constexpr std::uintptr_t CRunningScript_RemoveFromList     = 0x00438FB0;
     constexpr std::uintptr_t CRunningScript_AddToList          = 0x00438FE0;
 
+    // Private helper used only by CAnimBlendAssocGroup::CreateAssociations:
+    // scans loaded clump model infos for a cutscene animation's model name.
+    // Verified in gta3.exe md5 6f2fdac3: CreateAssociations starts at 0x401130
+    // and calls this helper at 0x4011A8, immediately before the former NULL
+    // dereference at 0x4011C4.
+    constexpr std::uintptr_t Cutscene_GetModelFromName         = 0x004010D0;
+    // CCutsceneMgr helpers verified directly in the target gta3.exe. Claude is
+    // silent, so the separate PLAYERH object can be omitted to keep the head
+    // embedded in the selected PLAYERX/PLAYER skin visible.
+    constexpr std::uintptr_t Cutscene_CreateObject             = 0x00404BE0;
+    constexpr std::uintptr_t Cutscene_AddHead                  = 0x00404CD0;
+    constexpr std::uintptr_t Cutscene_SetHeadAnim              = 0x00404D80;
+
     // Static array of CMenuScreen, 59 pages, each 0x184 bytes.
     constexpr std::uintptr_t aScreens                           = 0x00611930;
     constexpr std::uintptr_t FindPlayerPed_Pointer              = 0x006FB1C8;
@@ -141,13 +154,15 @@ namespace GameAddr {
     // weapon back into a ped's inventory after a respawn cleared it.
     constexpr std::uintptr_t CPed_GiveWeapon = 0x004CF9B0;
 
-    // CPed::m_pMyVehicle (+0x310): the vehicle the ped is currently in (null on
-    // foot). Read by STORE_CAR_CHAR_IS_IN / IS_CHAR_IN_CAR (both load
-    // [ped+0x310]). CVehicle::m_fHealth (+0x200): float written by
+    // CPed::m_pMyVehicle (+0x310): current/last vehicle reference. It can stay
+    // non-null after Claude gets out;
+    // CPed::m_bInVehicle (+0x314) is the authoritative occupancy flag.
+    // CVehicle::m_fHealth (+0x200): float written by
     // SET_CAR_HEALTH (fstp [veh+0x200]); 1000 = pristine. CAutomobile smokes
     // the engine at low health and ignites the car near zero, so the F11/F12
     // car traps just drop this value.
     constexpr std::ptrdiff_t CPed_m_pMyVehicle  = 0x310;
+    constexpr std::ptrdiff_t CPed_m_bInVehicle  = 0x314;
     constexpr std::ptrdiff_t CVehicle_m_fHealth = 0x200;
 
     // CPools::ms_pPedPool — pointer to CPool<CPed>. RE'd from gta3.exe md5

@@ -564,6 +564,80 @@ namespace PlayerRuntime {
     inline void LaunchRestorePlayerOutfitStub() {
         LaunchApplyPlayerSkinStub("PLAYERX", true, "restore normal outfit");
     }
+    // O selects the visual state; cutscene creation queues the exact same
+    // UNDRESS/DRESS operation that the working manual key uses. Applying it a
+    // couple of frames later avoids launching an SCM helper re-entrantly from
+    // CCutsceneMgr's model lookup.
+    inline bool g_secondaryPlayerSkinActive = false;
+    inline int  g_cutsceneSkinApplyDelayFrames = -1;
+    inline int  g_cutsceneSkinApplyWaitFrames = 0;
+    inline int  g_cutsceneSkinApplyMission = -1;
+    constexpr int kCutsceneSkinApplyDelayFrames = 2;
+    constexpr int kCutsceneSkinApplyTimeoutFrames = 3 * 60;
+
+    inline const char* SelectedPlayerSkinName() {
+        return g_secondaryPlayerSkinActive ? "PLAYER" : "PLAYERX";
+    }
+
+    inline void QueueCutscenePlayerSkinApply(const char* requestedModel) {
+        const int mission = RunState::LastLaunchedMission();
+        if (mission <= 21 || IsIntroSequencePresentationActive() ||
+            IsGiveMeLibertyPhaseActive()) {
+            return;
+        }
+        if (g_cutsceneSkinApplyDelayFrames >= 0 &&
+            g_cutsceneSkinApplyMission == mission) {
+            return;
+        }
+        g_cutsceneSkinApplyDelayFrames = kCutsceneSkinApplyDelayFrames;
+        g_cutsceneSkinApplyWaitFrames = 0;
+        g_cutsceneSkinApplyMission = mission;
+        Logger::Log("Cutscene skin apply queued: model='%s' mission=%d selected=%s",
+                    requestedModel ? requestedModel : "",
+                    mission,
+                    SelectedPlayerSkinName());
+    }
+
+    inline void TryApplySelectedCutscenePlayerSkin() {
+        if (g_cutsceneSkinApplyDelayFrames < 0) {
+            return;
+        }
+        if (++g_cutsceneSkinApplyWaitFrames > kCutsceneSkinApplyTimeoutFrames) {
+            Logger::Log("Cutscene skin apply timed out: mission=%d",
+                        g_cutsceneSkinApplyMission);
+            g_cutsceneSkinApplyDelayFrames = -1;
+            g_cutsceneSkinApplyMission = -1;
+            return;
+        }
+        if (!ScriptRuntime::HasLiveScriptEngine() || !PlayerPed()) {
+            return;
+        }
+        if (RunState::LastLaunchedMission() != g_cutsceneSkinApplyMission ||
+            !ScriptRuntime::AlreadyRunningAMissionScript() ||
+            IsIntroSequencePresentationActive() ||
+            IsGiveMeLibertyPhaseActive()) {
+            g_cutsceneSkinApplyDelayFrames = -1;
+            g_cutsceneSkinApplyMission = -1;
+            return;
+        }
+        if (g_cutsceneSkinApplyDelayFrames > 0) {
+            --g_cutsceneSkinApplyDelayFrames;
+            return;
+        }
+        if (PlayerVehicle()) {
+            return;
+        }
+        const char* skinName = SelectedPlayerSkinName();
+        if (!LaunchApplyPlayerSkinStub(skinName, false,
+                                       "automatic selected cutscene skin")) {
+            return;
+        }
+        Logger::Log("Cutscene skin applied: mission=%d selected=%s",
+                    g_cutsceneSkinApplyMission,
+                    skinName);
+        g_cutsceneSkinApplyDelayFrames = -1;
+        g_cutsceneSkinApplyMission = -1;
+    }
 
     // Apply a queued outfit restore once the wasted respawn finished (the ped
     // is alive again); running the stub mid-fade would dress a dead ped.
@@ -577,7 +651,7 @@ namespace PlayerRuntime {
         if (!ScriptRuntime::HasLiveScriptEngine() || !PlayerPed()) {
             return;
         }
-        if (!SafeReadPlayerAlive()) {
+        if (!SafeReadPlayerAlive() || PlayerVehicle()) {
             return;
         }
         g_outfitRestorePending = false;
@@ -589,8 +663,10 @@ namespace PlayerRuntime {
     // runs when 8ball.sc executes to its split exit; the synthetic-GML and
     // resume boot paths skip the script entirely, so Claude keeps the brown
     // prison texture forever. Once per engine-life, when a run is active and the
-    // player is alive in free-roam (not mid-mission, not in the intro), force
-    // the normal "PLAYER" texture back. Cheap and idempotent.
+    // player is alive and on foot in free-roam (not mid-mission, not in the
+    // intro), force the normal PLAYERX texture back. UNDRESS/DRESS rebuilds the
+    // ped clump; doing that while Claude is seated corrupts his vehicle-exit
+    // animation/control state and can leave him frozen after getting out.
     inline bool g_bootOutfitRestoreDone = false;
     inline int  g_bootOutfitSettleFrames = 0;
     inline void TryApplyBootOutfitRestore() {
@@ -615,6 +691,12 @@ namespace PlayerRuntime {
             return;
         }
         if (g_bootOutfitRestoreDone) {
+            return;
+        }
+        if (PlayerVehicle()) {
+            // Wait for a complete on-foot state, then give vehicle-exit
+            // animations time to settle before replacing the player clump.
+            g_bootOutfitSettleFrames = 0;
             return;
         }
         // Let the world settle a moment after control returns before dressing.

@@ -930,7 +930,7 @@ namespace {
         // refuse a mission whose unlock_mission_* item has not arrived (the
         // list may still display it as upcoming).
         if (!ScriptRuntime::IsMissionEntryUnlocked(*entry)) {
-            PlayerRuntime::QueueMarkerBlockedToast();
+            PlayerRuntime::QueueMarkerBlockedToast(entry);
             Logger::Log("Menu launch BLOCKED (AP unlock missing): key='%.8s' actual=%d",
                         entry->displayKey ? entry->displayKey : "", actualMissionIndex);
             return false;
@@ -1386,6 +1386,8 @@ void MenuPatch::TickMarkerLaunch() {
         PlayerRuntime::IsIntroSequenceLaunchPending()) {
         return;
     }
+    // PlayerVehicle() now checks CPed::m_bInVehicle. The adjacent vehicle
+    // pointer can retain a deleted/previous car, which used to block this watcher.
     if (PlayerRuntime::PlayerVehicle() != nullptr) {
         return; // vanilla markers are on-foot triggers
     }
@@ -1405,7 +1407,8 @@ void MenuPatch::TickMarkerLaunch() {
         if (!playable) {
             // Standing on a contact whose chain has nothing playable: hint
             // once, then back off a few seconds so the toast cannot spam.
-            PlayerRuntime::QueueMarkerBlockedToast();
+            PlayerRuntime::QueueMarkerBlockedToast(
+                ScriptRuntime::FindNextUnvalidatedMissionInBucket(def.bucket));
             s_cooldownFrames = 5 * 60;
             return;
         }

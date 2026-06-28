@@ -147,8 +147,8 @@ namespace PlayerRuntime {
         }
         if (g_markerBlockedToastPending) {
             g_markerBlockedToastPending = false;
-            TextOverrides::SetBridgeToast("MISSION LOCKED: ITEM MISSING");
-            LaunchPrintNowStub("APBRG", 4000);
+            TextOverrides::SetBridgeToast(g_markerBlockedToast);
+            LaunchPrintNowStub("APBRG", 5000);
         }
         if (g_offlineRunToastPending) {
             g_offlineRunToastPending = false;

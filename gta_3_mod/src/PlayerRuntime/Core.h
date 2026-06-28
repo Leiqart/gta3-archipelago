@@ -192,7 +192,56 @@ namespace PlayerRuntime {
     // StartNewScript hook, fired from the per-frame tick so helper scripts
     // are never started re-entrantly inside the hook.
     inline bool g_markerBlockedToastPending = false;
-    inline void QueueMarkerBlockedToast() {
+    inline char g_markerBlockedToast[128] = "MISSION VERROUILLEE";
+    inline void QueueMarkerBlockedToast(
+        const ScriptRuntime::VisibleMissionEntry* entry = nullptr) {
+        if (!entry) {
+            std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                          "AUCUNE MISSION DISPONIBLE");
+            g_markerBlockedToastPending = true;
+            return;
+        }
+
+        const char* mission = entry->displayKey && entry->displayKey[0]
+            ? entry->displayKey : "MISSION";
+        const char* location = ScriptRuntime::MissionLocationId(entry->actualIndex);
+        if (Config::RequireApMissionUnlockItems() && location && location[0] &&
+            !ScriptRuntime::HasMissionUnlockItem(entry->actualIndex)) {
+            std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                          "%s - MISSING: unlock_%s", mission, location);
+        } else {
+            const ScriptRuntime::VisibleMissionEntry* previous =
+                ScriptRuntime::FindPreviousMissionInBucket(*entry);
+            if (previous && !ScriptRuntime::IsMissionEntryValidated(*previous)) {
+                std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                              "%s - FINIR D'ABORD: %s", mission,
+                              previous->displayKey ? previous->displayKey : "MISSION PRECEDENTE");
+            } else if (!ScriptRuntime::IsCharacterUnlocked(entry->bucket)) {
+                const char* chain = ScriptRuntime::BucketChain(entry->bucket);
+                const ScriptRuntime::VisibleMissionEntry* storyGate = nullptr;
+                for (const StoryMissionUnlockDef& unlock : kStoryMissionUnlocks) {
+                    if (unlock.bucket == entry->bucket) {
+                        storyGate = ScriptRuntime::FindVisibleMissionByActualIndex(
+                            unlock.triggerActualIndex);
+                        break;
+                    }
+                }
+                if (storyGate && storyGate->displayKey && chain && chain[0]) {
+                    std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                                  "%s - FINIR %s OU ITEM unlock_%s", mission,
+                                  storyGate->displayKey, chain);
+                } else if (chain && chain[0]) {
+                    std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                                  "%s - MISSING: unlock_%s", mission, chain);
+                } else {
+                    std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                                  "%s - CONTACT VERROUILLE", mission);
+                }
+            } else {
+                std::snprintf(g_markerBlockedToast, sizeof(g_markerBlockedToast),
+                              "%s - MISSION VERROUILLEE", mission);
+            }
+        }
         g_markerBlockedToastPending = true;
     }
     inline bool g_offlineRunToastPending = false;
@@ -256,8 +305,15 @@ namespace PlayerRuntime {
         if (!ped) {
             return nullptr;
         }
-        return *reinterpret_cast<void**>(
-            static_cast<std::uint8_t*>(ped) + GameAddr::CPed_m_pMyVehicle);
+        auto* bytes = static_cast<std::uint8_t*>(ped);
+        // m_pMyVehicle is also the last vehicle reference and is not guaranteed
+        // to be cleared when Claude finishes getting out (or when a mission
+        // deletes that car). Gate it with CPed::m_bInVehicle so marker launches
+        // and vehicle-prep helpers cannot treat a stale pointer as occupancy.
+        if (*(bytes + GameAddr::CPed_m_bInVehicle) == 0) {
+            return nullptr;
+        }
+        return *reinterpret_cast<void**>(bytes + GameAddr::CPed_m_pMyVehicle);
     }
 
     // Islands open as soon as a contact that LIVES on them is unlocked — and a

@@ -150,15 +150,6 @@ namespace PlayerRuntime {
     inline int  g_packageIndex   = 0;
     inline bool g_packageKeyDown = false;  // TryFirePackageTeleportKey -> debug/DebugHotkeys.h
 
-    struct PlayerSkinCandidate {
-        const char* name;
-    };
-    inline constexpr PlayerSkinCandidate kPlayerSkinCandidates[] = {
-        {"PLAYERX"},
-        {"PLAYER"},
-        {"PLAYERP"},
-    };
-    inline int  g_playerSkinCycleIndex = 0;
     inline bool g_cyclePlayerSkinKeyDown = false;  // TryFireCyclePlayerSkinKey -> debug/DebugHotkeys.h
     inline void SaveLastPlayerSkinTest(const char* skinName) {
         const std::string path = PluginPaths::InGameDir("III.MissionSelector.last_skin.txt");

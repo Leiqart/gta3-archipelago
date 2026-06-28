@@ -704,6 +704,24 @@ namespace ScriptRuntime {
             return RunState::IsSyntheticMissionValidated("APINTRO") ||
                    IsSyntheticMissionLocationChecked("APINTRO");
         }
+        // Story branches can expose a second contact while the current contact
+        // still has missions left. In particular LM3 (Drive Misty For Me)
+        // unlocks Joey while LM4 also becomes playable, so both street markers
+        // must be active concurrently rather than waiting on one global seed.
+        int storyGate = -1;
+        switch (bucket) {
+            case MissionBucket::Joey:
+            case MissionBucket::MeatFactory: storyGate = 23; break; // LM3
+            case MissionBucket::Toni:        storyGate = 29; break; // JM4
+            case MissionBucket::Frankie:     storyGate = 34; break; // TM3
+            case MissionBucket::Asuka:       storyGate = 41; break; // FM4
+            default: break;
+        }
+        if (storyGate >= 0 &&
+            (RunState::IsMissionValidated(storyGate) ||
+             IsMissionLocationChecked(storyGate))) {
+            return true;
+        }
         return IsCharacterUnlocked(bucket);
     }
 
@@ -756,6 +774,19 @@ namespace ScriptRuntime {
         for (const VisibleMissionEntry& entry : kVisibleMissions) {
             if (entry.bucket == bucket && !entry.bugged &&
                 IsMissionEntryUnlocked(entry) && !IsMissionEntryValidated(entry)) {
+                return &entry;
+            }
+        }
+        return nullptr;
+    }
+
+    // First mission in the contact chain that still needs validation, whether
+    // it is currently unlocked or not. Used to explain a blocked street marker
+    // with the exact mission/item instead of a generic "item missing" toast.
+    inline const VisibleMissionEntry* FindNextUnvalidatedMissionInBucket(MissionBucket bucket) {
+        for (const VisibleMissionEntry& entry : kVisibleMissions) {
+            if (entry.bucket == bucket && !entry.bugged &&
+                IsVisibleMissionAvailable(entry) && !IsMissionEntryValidated(entry)) {
                 return &entry;
             }
         }

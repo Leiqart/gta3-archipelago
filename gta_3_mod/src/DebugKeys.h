@@ -39,7 +39,7 @@ namespace DebugKeys {
         {"crossing_teleport",  "F5",  "cycle the inter-island choke points"},
         {"spawn_car",          "F6",  "spawn an Infernus"},
         {"give_weapons",       "G",   "give the player a full weapon loadout"},
-        {"cycle_player_skin",  "F10", "cycle Claude PLAYERX/PLAYER/PLAYERP aliases"},
+        {"cycle_player_skin",  "O",   "toggle Claude normal PLAYERX / secondary PLAYER"},
         {"safehouse_teleport", "F9",  "cycle the safehouses"},
         {"vehicle_smoke",      "F11", "set current vehicle smoking"},
         {"vehicle_fire",       "F12", "set current vehicle on fire"},

@@ -1,0 +1,103 @@
+# --- Build outputs ---
+obj/
+output/
+build/build/
+build/manual_link/
+*.asi
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.idb
+*.lib
+*.exp
+
+# --- Visual Studio ---
+.vs/
+*.user
+*.suo
+
+# --- Vendored external libraries ---
+gta_3_mod/lib/minhook/
+
+# --- Python ---
+__pycache__/
+*.pyc
+
+# --- Archipelago generation outputs ---
+out/
+out2/
+out3/
+out4/
+out_*/
+dist/
+*.zip
+
+# --- Runtime state (never commit) ---
+III.MissionSelector.state.ini
+III.MissionSelector.last_skin.txt
+*.log
+III.Archipelago.*.json
+GTA3Archipelago-state/
+
+# --- Personal connection settings (use AP_connexion.txt.example) ---
+AP_connexion.txt
+
+# --- Backups ---
+*.bak
+*.bak_*
+*.old
+/old_gta_3_mod/
+
+# --- Rockstar-derived / game content (do NOT commit) ---
+**/data/main*.scm
+*.txd
+*.dff
+*.img
+*.col
+models/
+skins/
+*.ps1
+*.bat
+*.jpg
+
+# --- Local archive of the pre-rewrite history (contains Rockstar files, never push) ---
+/old/
+
+# --- Legacy local tools of the former bridge (kept on disk, not published) ---
+/NOTE_RELEASE_V0.6.7.md
+/gta3-ap.cmd
+/archipelago_client/bridge.py
+/archipelago_client/say.py
+/archipelago_client/config.json
+/release/GTA3-Archipelago/gta3_game_files/
+
+# --- Published scripts despite the *.ps1 rule ---
+!/archipelago_client/build_apworld.ps1
+
+# --- Tests stay local for now ---
+/gta_3_mod/tests/
+/gta_3_mod/build/GTA3ArchipelagoTests.sln
+/gta_3_mod/build/GTA3ArchipelagoTests.vcxproj
+/gta_3_mod/build/AsiHost.vcxproj
+/archipelago_client/tests/
+/run_tests.py
+/validate_archipelago.py
+/run_live_game_test.py
+
+# --- Local mod documentation (temporarily unpublished) ---
+/gta_3_mod/README.md
+
+# --- Publish only the root README as project documentation ---
+*.md
+!/README.md
+!**/LICENSE.md
+!**/COPYING.md
+/docs/
+
+# --- Release artifacts belong in GitHub Releases, not in the source tree ---
+*.apworld
+/release/
+/build_release.py
+/generate_runtime_data.py

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{98A11F78-7C2D-4C65-B44F-CA5544B55D10}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>GTA3Archipelago</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(ProjectDir)..\output\Debug\</OutDir>
+    <IntDir>$(ProjectDir)obj\Debug\</IntDir>
+    <TargetName>GTA3Archipelago</TargetName>
+    <TargetExt>.asi</TargetExt>
+    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(ProjectDir)..\output\Release\</OutDir>
+    <IntDir>$(ProjectDir)obj\Release\</IntDir>
+    <TargetName>GTA3Archipelago</TargetName>
+    <TargetExt>.asi</TargetExt>
+    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;DEBUG;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <LargeAddressAware>true</LargeAddressAware>
+      <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <LargeAddressAware>true</LargeAddressAware>
+      <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\Connection.h" />
+    <ClInclude Include="..\src\Diagnostics.h" />
+    <ClInclude Include="..\src\Log.h" />
+    <ClInclude Include="..\src\UI.h" />
+    <ClInclude Include="..\src\MissionManager.h" />
+    <ClInclude Include="..\src\MissionTable.h" />
+    <ClInclude Include="..\src\PackageManager.h" />
+    <ClInclude Include="..\src\OpenIsland.h" />
+    <ClInclude Include="..\src\MissionMarkers.h" />
+    <ClInclude Include="..\src\opcode\Command.h" />
+    <ClInclude Include="..\src\opcode\Wrappers.h" />
+    <ClInclude Include="..\src\opcode\NativeExecutor.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\Connection.cpp" />
+    <ClCompile Include="..\src\Diagnostics.cpp" />
+    <ClCompile Include="..\src\dllmain.cpp" />
+    <ClCompile Include="..\src\Log.cpp" />
+    <ClCompile Include="..\src\UI.cpp" />
+    <ClCompile Include="..\src\IntroSequence.cpp" />
+    <ClCompile Include="..\src\UIHooks.cpp" />
+    <ClCompile Include="..\src\MissionManager.cpp" />
+    <ClCompile Include="..\src\PackageManager.cpp" />
+    <ClCompile Include="..\src\Session.cpp" />
+    <ClCompile Include="..\src\GameRuntime.cpp" />
+    <ClCompile Include="..\src\OpenIsland.cpp" />
+    <ClCompile Include="..\src\MissionMarkers.cpp" />
+    <ClCompile Include="..\src\MissionProgress.cpp" />
+    <ClCompile Include="..\src\opcode\Command.cpp" />
+    <ClCompile Include="..\src\opcode\Wrappers.cpp" />
+    <ClCompile Include="..\src\opcode\NativeExecutor.cpp" />
+    <ClCompile Include="..\third_party\minhook\src\buffer.c" />
+    <ClCompile Include="..\third_party\minhook\src\hook.c" />
+    <ClCompile Include="..\third_party\minhook\src\trampoline.c" />
+    <ClCompile Include="..\third_party\minhook\src\hde\hde32.c" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

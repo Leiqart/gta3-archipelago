@@ -104,3 +104,7 @@ skins/
 
 # --- Previous implementation kept for reference while rebuilding (also in tag v0.3.0-alpha.1) ---
 /.old/
+
+# --- Local build scripts and editor settings (not published) ---
+build.cmd
+.vscode/

@@ -1,0 +1,18 @@
+{
+  // The repository plus the two libraries cloned next to it (PLUGIN_SDK_DIR and MINHOOK_DIR, see README, Building).
+  "folders": [
+    { "name": "GTAPIII", "path": "." },
+    { "name": "plugin-sdk", "path": "../plugin-sdk" },
+    { "name": "minhook", "path": "../minhook" }
+  ],
+  "settings": {
+    // plugin-sdk also covers other games: hide them so the explorer and the search only show GTA III and the shared code.
+    "files.exclude": {
+      "**/plugin_II": true,
+      "**/plugin_IV": true,
+      "**/plugin_sa": true,
+      "**/plugin_vc": true,
+      "**/plugin_*_unreal": true
+    }
+  }
+}

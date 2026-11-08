@@ -1,0 +1,7 @@
+# Player settings read by the generator: one file per player slot.
+name: Leiqart
+description: GTA III test slot
+game: Grand Theft Auto III
+Grand Theft Auto III:
+  # ordered: each boss's missions in story order; free: any unlocked mission, in any order.
+  mission_order: ordered

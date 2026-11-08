@@ -51,3 +51,30 @@ The Steam `gta3.exe` is newer than 1.0, so downgrade it once before installing t
 5. Copy `SilentPatchIII.asi` and `SilentPatchIII.ini` from [SilentPatch](https://github.com/CookiePLMonster/SilentPatch) next to `gta3.exe`; without it, the 1.0 executable asks for the CD.
 
 If Steam verifies the game files, it puts its own `gta3.exe` back: redo step 3. The Rockstar Games Launcher copy works the same way once the game folder is moved out of `Program Files`.
+
+## Building
+
+You need Visual Studio 2022 with the C++ x86 tools, Archipelago 0.6.7, and two libraries kept outside this repository; each one is found through an environment variable:
+
+| Library | Version | Variable | Use |
+| --- | --- | --- | --- |
+| [MinHook](https://github.com/TsudaKageyu/minhook) | commit `d94c64d` (v1.3.4 + 14) | `MINHOOK_DIR` | compiled into the ASI |
+| [plugin-sdk](https://github.com/DK22Pac/plugin-sdk) | commit `15f15b6` | `PLUGIN_SDK_DIR` | its GTA III library (`Plugin_III.lib`) is compiled into the ASI |
+
+```powershell
+git clone https://github.com/TsudaKageyu/minhook.git
+git -C minhook checkout d94c64d32ea37bc4f5ee47d580709f70c6fb6080
+git clone https://github.com/DK22Pac/plugin-sdk.git
+git -C plugin-sdk checkout 15f15b60bbf74c106e1b496ff92c98764abf4605
+setx MINHOOK_DIR "C:\path\to\minhook"
+setx PLUGIN_SDK_DIR "C:\path\to\plugin-sdk"
+```
+
+A dev build of the ASI adds an autopilot that skips the start-up videos, starts a game and plays the test missions by itself (F8 pauses it), with cheat keys: F5 teleports to the mission blip, F6 kills the character the mission marks, F7 gives a car, F9 writes the position to the log, F10 fails the running mission; never ship a dev build. The first build also compiles plugin-sdk's `Plugin_III.lib` with plugin-sdk's own tools (premake and MSBuild, about a minute); after checking out another plugin-sdk commit, delete `%PLUGIN_SDK_DIR%\output\lib\Plugin_III.lib` so the next build makes it again. With the libraries cloned next to this repository, `GTAPIII.code-workspace` opens the three folders side by side in VS Code.
+
+## Credits
+
+This mod stands on the shoulders of the GTA modding community. Thank you to:
+
+- **Dmitry K. ([DK22Pac](https://github.com/DK22Pac)), fastman92, LINK/2012 and every contributor of [plugin-sdk](https://github.com/DK22Pac/plugin-sdk)** (zlib license). Their years of reverse engineering mapped GTA III's code and memory; this mod is built on their GTA III library, which gives it the game's addresses, structures and functions.
+- **Tsuda Kageyu, for [MinHook](https://github.com/TsudaKageyu/minhook)** (BSD 2-Clause license, see `LICENSE.txt` in its repository), which hooks the game's functions.

@@ -1,0 +1,13 @@
+-xc++
+-std=c++2b
+--target=i686-pc-windows-msvc
+-DGTA3
+-DPLUGIN_SGV_10EN
+-DRW
+-I../../minhook/include
+-I../../plugin-sdk/plugin_III
+-I../../plugin-sdk/plugin_III/game_III
+-I../../plugin-sdk/plugin_III/game_III/enums
+-I../../plugin-sdk/plugin_III/game_III/rw
+-I../../plugin-sdk/shared
+-I../../plugin-sdk/shared/game

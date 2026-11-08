@@ -101,3 +101,6 @@ skins/
 /release/
 /build_release.py
 /generate_runtime_data.py
+
+# --- Previous implementation kept for reference while rebuilding (also in tag v0.3.0-alpha.1) ---
+/.old/

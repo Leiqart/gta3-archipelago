@@ -1,7 +1,0 @@
--xc++
--std=c++17
--Isrc
--Itests/unit
--DWIN32_LEAN_AND_MEAN
--DNOMINMAX
--D_CRT_SECURE_NO_WARNINGS

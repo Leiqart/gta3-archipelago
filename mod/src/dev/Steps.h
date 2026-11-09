@@ -62,6 +62,8 @@ namespace Steps {
     Goal GlobalAtLeast(int global, int value);
     // Goal: both goals are reached.
     Goal AllOf(Goal first, Goal second);
+    // Goal: the other goal is not reached, like no pickup left on the radar.
+    Goal Not(Goal goal);
     // Goal: any mission blip, pickups and objects (like a ringing phone) included, lies within 20 m of a place on the map.
     Goal AnyBlipNear(CVector place);
     // Goal: the radar marks at least one mission blip of this type, whatever the others.
@@ -70,9 +72,15 @@ namespace Steps {
     Goal InModel(int model);
     // Goal: the player sits in the car the script keeps in this global.
     Goal InScriptCar(int carGlobal);
+    // Goal: a kill frenzy (START_KILL_FRENZY) is on, like the drive-by of Uzi Money.
+    bool Frenzy();
+    // Goal: one of the characters the script keeps in these globals, still alive, is within this distance of the car the script keeps in that global.
+    Goal AnyCharNear(std::vector<int> charGlobals, int carGlobal, float distance);
 
     // Action: does two actions, one after the other.
     Action Both(Action first, Action second);
+    // Action: does the first action while the goal is reached, the other one otherwise.
+    Action Either(Goal when, Action then, Action otherwise);
     // Action: gets in the car the mission marks, going beside it first when it is far.
     void EnterBlipCar();
     // Action: teleports to the mission blip, beside it for a character or a car; nothing once there.
@@ -83,6 +91,16 @@ namespace Steps {
     Action StopAt(CVector place);
     // Action: puts the player on foot at a place, out of their car first, for the markers a mission checks on foot; nothing once there.
     Action WalkTo(CVector place);
+    // Action: stands in front of the pay phone nearest to a place, so the game lifts it when it rings; nothing once it is lifted.
+    Action AnswerPhone(CVector place);
+    // Action: writes these script globals to the log whenever one of them has changed, for studying a mission.
+    Action LogGlobals(std::vector<int> globals);
+    // Action: turns the player on foot to this heading (0 is north, 90 west), the camera behind them, for a mission that only brings enemies in off screen.
+    Action FaceHeading(float degrees);
+    // Action: puts the player on foot at a place's own height, for a marker under a low roof (the Panlantic lift); nothing once there.
+    Action StandAt(CVector place);
+    // Action: writes to the log whether a point is on screen whenever that changes, for a mission that waits for the player to look at something.
+    Action LogPointOnScreen(CVector point);
     // Action: gives the player a Kuruma when on foot.
     void GetCar();
     // Action: picks up the friend the mission marks, like Misty: in a car, within 8 m of her, and she gets in by herself.
@@ -101,6 +119,49 @@ namespace Steps {
     Action ThrowGrenadeInto(CVector place);
     // Action: activates a timed bomb on the car the script keeps in this global, with the 7 s fuse the game gives when the player arms it.
     Action ActivateTimedBomb(int carGlobal);
+    // Action: teleports the player (and their car) this far beside the character the script keeps in this global, still alive, like a hostage the player must come close to.
+    Action GoBesideScriptChar(int charGlobal, float distance);
+    // Action: makes the car the script keeps in this global proof against everything, once, for a mission whose enemies are only there to wreck it (Decoy).
+    Action ProofScriptCar(int carGlobal);
+    // Action: teleports the player (and their car) beside the car the script keeps in this global whenever it is more than 15 m away.
+    Action StayNearScriptCar(int carGlobal);
+    // One point of a route a mission drives a car along, and the script's phase from which it sends the car there.
+    struct RoutePoint {
+        int phase;
+        CVector place;
+    };
+    // Action: moves the car the script keeps in this global to the next point of a route, each once the phase the script keeps in that global allows it; nothing after the last.
+    Action DriveScriptCarAlong(int carGlobal, int phaseGlobal, std::vector<RoutePoint> route);
+    // Action: takes the player's boat onto the nearest marked pickup, else onto the nearest marked place, at the boat's own height.
+    void SailToNearestBlip();
+    // Action: takes the player's boat onto the nearest floating package, a pickup without a blip that a plane drops (A Drop in the Ocean), else onto the nearest marked place.
+    void SailToFloatingPackages();
+    // Action: sets off an explosion on every object the mission marks, for what a mission wants smashed (the witness's bodycast).
+    void ExplodeMarkedObjects();
+    // Action: takes the player out of their car to a spot 8 m beside it.
+    void GetOutAside();
+    // Action: for missions read only in part: kills the marked characters, else collects the nearest pickup, else gets in the marked car, else goes to the marked place.
+    void FollowRadar();
+    // Action: like FollowRadar for a mission with friends on the radar: spares the characters the script keeps in these globals, and goes beside marked cars instead of in.
+    Action FollowRadarSparing(std::vector<int> charGlobals);
+    // Action: heals the player and repairs their car, for a mission that only asks to survive a while with the police on them (Decoy), or gunmen (Smack Down).
+    void KeepAlive();
+    // Action: moves every marked car, still whole, into a trap; with none marked, goes to the nearest marked place away from the trap, where the next one shows up (Bait).
+    Action LureMarkedCarsTo(CVector trap);
+    // Action: teleports the player to the place after the one they are near, round and round, for a mission whose targets only show up nearby (Espresso-2-Go).
+    Action TourPlaces(std::vector<CVector> places);
+    // Action: during a kill frenzy, kills the nearby characters of the models it wants, each one first counted as the player's kill with its weapon.
+    void KillFrenzyTargets();
+    // Action: teleports to the nearest marked place more than 6 m away; with a race's current and next checkpoint both marked, it alternates and passes each.
+    void AlternateCoordBlips();
+    // Action: moves the car the script keeps in this global to a place once, like an empty car pushed into the sea.
+    Action MoveScriptCarTo(int carGlobal, CVector place);
+    // Action: blows up every marked car except those the script keeps in these globals (the player's own toy van).
+    Action DestroyMarkedCarsExcept(std::vector<int> carGlobals);
+    // Action: seats the player in the car the script keeps in this global first, then does the other action, for a mission that wants that car somewhere.
+    Action DriveScriptCar(int carGlobal, Action then);
+    // Action: drives onto the nearest marked pickup until the script counts this many carried (in this global), or none is left, then drives to a drop-off.
+    Action CollectByCarAndDeliver(int carriedGlobal, int batch, CVector dropOff);
     // Action: walks onto the pickup the mission marks, which collects it.
     void CollectPickup();
     // Action: kills the driver and passengers of every car the mission marks.
@@ -121,6 +182,8 @@ namespace Steps {
     void KillMarked();
     // Action: blows up every car the mission marks.
     void DestroyMarkedCars();
+    // Action: damages every marked car first, as the player's shots would, for a mission that reacts to a car hit while still whole; then kills their occupants and blows them up.
+    void WreckMarkedCars();
     // Action: holds the horn for one second.
     void Honk();
     // Action: clears the player's wanted level.

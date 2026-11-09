@@ -20,8 +20,10 @@ namespace Actions {
     float Distance2D(const CVector& a, const CVector& b);
     // Loads the area, then puts the player on the ground there; the game moves the car and its passengers too.
     void TeleportTo(const CVector& place);
-    // Teleports the player (and their car) 4 m beside a character or car, on a side whose ground is at its height.
-    void TeleportBeside(const CVector& entity);
+    // Puts the player at a place's own height, without looking for the ground, for a marker under a low roof the ground search would land on.
+    void PlaceAt(const CVector& place);
+    // Teleports the player (and their car) this far beside a character or car, on a side whose ground is at its height.
+    void TeleportBeside(const CVector& entity, float distance = 4.0f);
     // Teleports to the mission blip, beside it for a character, car or pickup; false when there is no blip.
     bool GoToMissionBlip();
     // Kills every living character the mission marks with a blip; returns how many.

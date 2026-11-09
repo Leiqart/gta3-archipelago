@@ -12,7 +12,9 @@
 #include "CPools.h"
 #include "CTimer.h"
 #include "CVehicle.h"
+#include "CWorld.h"
 #include "common.h"
+#include "extensions/ScriptCommands.h"
 #include "../ClientLink.h"
 #include "../Log.h"
 #include "../Missions.h"
@@ -190,15 +192,27 @@ namespace {
         return seen;
     }
 
+    // Game time the player was first seen on the marker of the next sheet, its mission not started yet; 0 when off it.
+    int g_onMarkerSince = 0;
+
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
     bool StartNextMission() {
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
             if (Actions::ScriptGlobal(sheet.passedFlag) == 1) continue;
             if (!sheet.start) return false;
             if (sheet.beforeStart) sheet.beforeStart();
+            const int now = CTimer::m_snTimeInMilliseconds;
             if (FindPlayerVehicle()) Actions::LeaveCarTo(*sheet.start);
             else if (Actions::Distance2D(Actions::PlayerPosition(), *sheet.start) > 1.0f) Actions::TeleportTo(*sheet.start);
-            else return false;
+            else if (!g_onMarkerSince || now - g_onMarkerSince < 5000) {
+                if (!g_onMarkerSince) g_onMarkerSince = now;
+                return false;
+            } else {
+                // A trigger that saw the player on its marker unable to start (CAN_PLAYER_START_MISSION, false while landing from the teleport) waits for them to leave it.
+                Log::Write("Autopilot: " + std::string(sheet.script) + " did not start on its marker, stepping off it and back");
+                Actions::TeleportTo(*sheet.start + CVector(6.0f, 6.0f, 0.0f));
+            }
+            g_onMarkerSince = 0;
             return true;
         }
         if (!g_runEndSaid) {
@@ -262,6 +276,8 @@ namespace {
         if (now - g_lastChangeTime <= 30000) return false;
         g_lastChangeTime = now;
         Actions::LogWhereIAm();
+        // What every contact's trigger checks before it launches a mission: the on-a-mission flag (g828) and CAN_PLAYER_START_MISSION.
+        Log::Write("  on a mission flag g828 = " + std::to_string(Actions::ScriptGlobal(828)) + ", can start a mission: " + (plugin::Command<plugin::Commands::CAN_PLAYER_START_MISSION>(CWorld::PlayerInFocus) ? "yes" : "no"));
         Stuck("nothing changed for 30 s, still: " + seen);
         return true;
     }
@@ -294,6 +310,7 @@ void Autopilot::Update() {
     LogCarOnExit();
     // A mission the run skips is not played, even for the frames it takes to run its passed routine.
     const char* running = Actions::RunningMission();
+    if (running) g_onMarkerSince = 0;
     FollowSheet(running && !g_skipped ? Sheets::Find(running) : nullptr);
     if (g_paused) {
         // The clocks stop while the player plays by hand.

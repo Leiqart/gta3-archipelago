@@ -4,6 +4,7 @@
 #include <string>
 #include "MinHook.h"
 #include "plugin.h"
+#include "CCutsceneMgr.h"
 #include "CMessages.h"
 #include "CObject.h"
 #include "CPad.h"
@@ -34,8 +35,10 @@ namespace {
     float GroundAt(const CVector& place) {
         Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
         bool found = false;
-        const float ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 2.0f, &found);
-        return found ? ground : CWorld::FindGroundZForCoord(place.x, place.y);
+        float ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 2.0f, &found);
+        if (!found) ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, 1000.0f, &found);
+        // No ground at all in another part of the city whose collision is not loaded yet: the place's own height, as the sheets give it, is the ground.
+        return found ? ground : place.z;
     }
 
     // Until this game time, CPad::GetHorn answers yes: the autopilot holds the horn.
@@ -110,6 +113,13 @@ CVector Actions::PlayerPosition() {
     return player->GetPosition();
 }
 
+void Actions::PlaceAt(const CVector& place) {
+    LogPlace("Placing the player at", place);
+    Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
+    Command<Commands::SET_PLAYER_COORDINATES>(CWorld::PlayerInFocus, place.x, place.y, place.z);
+    LogPlace("Placed, the player is now at", PlayerPosition());
+}
+
 float Actions::Distance2D(const CVector& a, const CVector& b) {
     return std::hypot(a.x - b.x, a.y - b.y);
 }
@@ -123,9 +133,9 @@ void Actions::TeleportTo(const CVector& place) {
     LogPlace("Teleported, the player is now at", PlayerPosition());
 }
 
-void Actions::TeleportBeside(const CVector& entity) {
-    // 4 m east, west, north or south: the first side whose ground is at the entity's height, not a roof above it or a hole below.
-    const CVector sides[] = {{4.0f, 0.0f, 0.0f}, {-4.0f, 0.0f, 0.0f}, {0.0f, 4.0f, 0.0f}, {0.0f, -4.0f, 0.0f}};
+void Actions::TeleportBeside(const CVector& entity, float distance) {
+    // East, west, north or south: the first side whose ground is at the entity's height, not a roof above it or a hole below.
+    const CVector sides[] = {{distance, 0.0f, 0.0f}, {-distance, 0.0f, 0.0f}, {0.0f, distance, 0.0f}, {0.0f, -distance, 0.0f}};
     for (const CVector& side : sides) {
         const CVector place = entity + side;
         if (std::fabs(GroundAt(place) - entity.z) < 2.0f) {
@@ -305,6 +315,9 @@ void Actions::Honk() {
     Log::Write("Honking for one second");
 }
 
+// The bit of CPad::DisablePlayerControls a cutscene holds, PLAYERCONTROL_CUTSCENE in re3.
+constexpr unsigned char kCutsceneControls = 128;
+
 void Actions::GiveControlBack() {
     // A contact's trigger switches streaming off before it launches a mission, which switches it back on in the setup a forced pass skips: LOAD_SCENE then never ends.
     Command<Commands::SWITCH_STREAMING>(1);
@@ -312,6 +325,9 @@ void Actions::GiveControlBack() {
     Command<Commands::SWITCH_WIDESCREEN>(0);
     Command<Commands::SET_CAMERA_BEHIND_PLAYER>();
     Command<Commands::RESTORE_CAMERA_JUMPCUT>();
+    // The trigger's MAKE_PLAYER_SAFE_FOR_CUTSCENE also starts a cutscene's processing, which only the mission's cutscene ends: until then the game loads no other part of the city's collision, and the player falls through the ground there.
+    CCutsceneMgr::ms_cutsceneProcessing = false;
+    CPad::GetPad(0)->DisablePlayerControls &= ~kCutsceneControls;
     Log::Write("Gave the player control, the camera and streaming back");
 }
 

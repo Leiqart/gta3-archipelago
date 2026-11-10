@@ -36,7 +36,8 @@ namespace {
         if (CCutsceneMgr::ms_running || CPad::GetPad(0)->DisablePlayerControls) return;
         if (KeyCheck::CheckJustDown(VK_F5) && !Actions::GoToMissionBlip()) Actions::Say(L"Cheat: no mission blip");
         if (KeyCheck::CheckJustDown(VK_F6) && Actions::KillMarkedCharacters() == 0) Actions::Say(L"Cheat: no character blip");
-        if (KeyCheck::CheckJustDown(VK_F10) && !Missions::ForceMissionFail()) Actions::Say(L"Cheat: no mission to fail");
+        // F3 and not F10, which unlocks the test missions' markers (Markers.cpp).
+        if (KeyCheck::CheckJustDown(VK_F3) && !Missions::ForceMissionFail()) Actions::Say(L"Cheat: no mission to fail");
         if (KeyCheck::CheckJustDown(VK_F7)) {
             if (FindPlayerVehicle()) Actions::Say(L"Cheat: already in a car");
             else Actions::GiveCar();
@@ -50,5 +51,5 @@ void Cheats::Install(const std::string& folder) {
     plugin::Events::menuDrawingEvent += Silence;
     plugin::Events::menuDrawingEvent += Autopilot::UpdateMenu;
     Autopilot::Install();
-    Log::Write("Dev build: the autopilot skips the videos, starts the game and plays the test missions (F8 pauses it); cheats on F5 (go to the mission blip), F6 (kill the marked characters), F7 (give a car), F9 (write my position to the log), F10 (fail the mission)");
+    Log::Write("Dev build: the autopilot skips the videos, starts the game and plays the test missions (F8 pauses it); cheats on F5 (go to the mission blip), F6 (kill the marked characters), F7 (give a car), F9 (write my position to the log), F3 (fail the mission)");
 }

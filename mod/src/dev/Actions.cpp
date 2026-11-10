@@ -401,6 +401,8 @@ void Actions::GiveControlBack() {
     Command<Commands::SWITCH_WIDESCREEN>(0);
     Command<Commands::SET_CAMERA_BEHIND_PLAYER>();
     Command<Commands::RESTORE_CAMERA_JUMPCUT>();
+    // The screen faded out before the launch (the intro ends with DO_FADE 0, 0) is faded back in by the mission's setup, which a forced pass skips.
+    Command<Commands::DO_FADE>(500, 1);
     // The trigger's MAKE_PLAYER_SAFE_FOR_CUTSCENE also starts a cutscene's processing, which only the mission's cutscene ends: until then the game loads no other part of the city's collision, and the player falls through the ground there.
     CCutsceneMgr::ms_cutsceneProcessing = false;
     CPad::GetPad(0)->DisablePlayerControls &= ~kCutsceneControls;

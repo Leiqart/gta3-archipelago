@@ -124,6 +124,15 @@ namespace {
         if (!g_skipped || !Missions::Running().empty()) return;
         if (g_skipped->afterSkip) g_skipped->afterSkip();
         Actions::GiveControlBack();
+        if (!Settings::Play()) {
+            g_skipped = nullptr;
+            // On the marker of the mission the run starts at, a spot the autopilot has landed on safely (6 m off it, Luigi's is a roof).
+            for (const Sheets::Sheet& sheet : Sheets::Run()) {
+                if (Settings::StartAt() == sheet.script && sheet.start) Actions::TeleportTo(*sheet.start);
+            }
+            Log::Write("Autopilot: the skipped missions are passed, the player plays from here (play=0)");
+            return;
+        }
         // Its passed routine opened the contact's next missions on this marker, and their triggers wait 250 ms (g20) before looking: going on to the run's next marker at once keeps Luigi 4 from starting after a skipped Drive Misty For Me.
         StartNextMission();
         g_skipped = nullptr;
@@ -381,6 +390,11 @@ void Autopilot::Update() {
     // The sheet being played is kept while its mission runs, even once done, so a job played on each island finishes its own sheet first.
     const bool keepSheet = running && g_sheet && std::string(running) == g_sheet->script;
     FollowSheet(running && !g_skipped ? (keepSheet ? g_sheet : Sheets::Find(running)) : nullptr);
+    // With play=0 the autopilot only finishes the skips at the start of the run.
+    if (!Settings::Play()) {
+        FinishSkip();
+        return;
+    }
     if (g_paused) {
         // The clocks stop while the player plays by hand.
         g_lastChangeTime = now;

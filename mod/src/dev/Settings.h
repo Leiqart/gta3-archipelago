@@ -15,4 +15,6 @@ namespace Settings {
     bool RunInBackground();
     // mute=1: silence the game's sound effects and music, without changing the volumes saved in gta3.set. Default: off.
     bool Mute();
+    // play=0: the autopilot only skips the missions before start_at and gives the player control back, then lets them play by hand. Default: on.
+    bool Play();
 }

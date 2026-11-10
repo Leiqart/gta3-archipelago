@@ -336,6 +336,17 @@ namespace {
     // Uzi Money: streets of Wichita Gardens around D-Ice's phone, 30 m apart, untested.
     const std::vector<CVector> kWichitaGardens{{-442.0f, -7.0f, 4.0f}, {-412.0f, -7.0f, 4.0f}, {-442.0f, 23.0f, 4.0f}, {-472.0f, -7.0f, 4.0f}, {-442.0f, -37.0f, 4.0f}};
 
+    // Ends a job as its player would, with the side mission button again in its vehicle (getting out only starts a minute's countdown to get back in).
+    void CancelJob() { Actions::PressSubMissionButton(); }
+
+    // The jobs' start: the street by Marty's factory gates in Portland, where cars land well (in front of Luigi's club, a teleported taxi fell into the subway below).
+    const CVector kJobStart{1190.0f, -795.0f, 14.5f};
+    // Portland streets cars have landed well on in the missions, toured to meet fares and patients.
+    const std::vector<CVector> kPortlandStreets{{1190.0f, -795.0f, 14.5f}, {936.0f, -846.0f, 14.5f}, {937.9f, -259.8f, 14.0f}, {1191.7f, -870.0f, 15.0f}};
+    // The starts of the jobs counted per island: a street by the Staunton police station and a Shoreside Vale road, where cars landed well in the missions.
+    const CVector kStauntonJobStart{327.7f, -1066.0f, 25.0f};
+    const CVector kShoresideJobStart{-864.44f, -282.44f, 32.5f};
+
     // RC Toyz: the Toyz van and the four markers (LOCATE_PLAYER_ANY_MEANS_3D 5 m), Diablo Destruction and Mafia Massacre in Portland, Rumpo Rampage in Shoreside Vale, Casino Calamity in Staunton.
     constexpr int kToyzVan = 149;
     const CVector kDiabloDestructionStart{1014.0f, -120.0f, 5.0f};
@@ -388,6 +399,28 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
             {"drive to Misty's door", PlayerNear(kMistysDoor, 3.0f), GoToBlip},
             {"honk until Misty gets in", BlipNear(kJoeys), Honk},
             {"take Misty to Joey's garage", UntilMissionEnds, GoToBlip, 60},
+        }},
+        // The jobs, started with the side mission button in their vehicle and played until their reward, then ended by leaving the vehicle; they need no story mission, so Portland's come first and each island's once it is open.
+        // Vigilante: 10 then 20 criminals on each island (counted in g4300, g4304, g4308 for the island loaded when the job starts), which set g4320, g4324, g4328 to 1 then 2.
+        {.script = "copcar", .passedFlag = 0, .done = GlobalAtLeast(4320, 2), .start = kJobStart, .startModel = MODEL_POLICE, .startWithButton = true, .steps = {
+            {"eliminate 20 criminals in Portland", GlobalAtLeast(4320, 2), Both(KeepAlive, Both(LogGlobals({4300}), Both(KillMarkedCarOccupants, KillMarked))), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
+        }},
+        // Firefighter: 20 fires on each island (counted in g4332, g4336, g4340 for the island loaded when the job starts), which sets g4220.
+        {.script = "firetru", .passedFlag = 0, .done = GlobalAtLeast(4332, 20), .start = kJobStart, .startModel = 97, .startWithButton = true, .steps = {
+            {"put out 20 fires in Portland", GlobalAtLeast(4332, 20), Both(KeepAlive, Both(LogGlobals({4332}), ExtinguishMarkedCars)), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
+        }},
+        // Paramedic: up to level 12, rewarded by never getting tired (no passed flag).
+        {.script = "ambulan", .passedFlag = 0, .done = NeverTired, .start = kJobStart, .startModel = 106, .startWithButton = true, .steps = {
+            {"rescue the patients up to level 12", NeverTired, Both(KeepAlive, FerryMarked(kPortlandStreets)), 3600},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
+        }},
+        // Taxi Driver: 100 fares (g1596, which also opens the Borgnine).
+        {.script = "taxi", .passedFlag = 1596, .start = kJobStart, .startModel = MODEL_TAXI, .startWithButton = true, .steps = {
+            // The taxi is kept repaired: a car under 500 health ends the job.
+            {"drive 100 fares (g1580 counts them)", GlobalAtLeast(1596, 1), Both(KeepAlive, Both(LogGlobals({1580}), FerryMarked(kPortlandStreets, true))), 3600},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
         }},
         // Joey only gives Mike Lips Last Lunch between 5:00 and 21:00 (GET_TIME_OF_DAY in his trigger).
         {.script = "joey1", .passedFlag = 1016, .start = kJoeysMarker, .beforeStart = SetClock(8), .steps = {
@@ -502,6 +535,15 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
             {"go to the docks", BlipNear(kStauntonDock), WalkTo(kDocks), 120},
             {"board Maria's boat", InCar, BoardScriptCar(kMariasBoatGlobal)},
             {"sail to Staunton with Maria and Asuka on deck", UntilMissionEnds, SailTo(kStauntonDock, {kMariaGlobal, kAsukaGlobal}), 120},
+        }},
+        // The Vigilante and Firefighter jobs on Staunton Island, open since Last Requests took the player there.
+        {.script = "copcar", .passedFlag = 0, .done = GlobalAtLeast(4324, 2), .start = kStauntonJobStart, .startModel = MODEL_POLICE, .startWithButton = true, .steps = {
+            {"eliminate 20 criminals on Staunton Island", GlobalAtLeast(4324, 2), Both(KeepAlive, Both(LogGlobals({4304}), Both(KillMarkedCarOccupants, KillMarked))), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
+        }},
+        {.script = "firetru", .passedFlag = 0, .done = GlobalAtLeast(4336, 20), .start = kStauntonJobStart, .startModel = 97, .startWithButton = true, .steps = {
+            {"put out 20 fires on Staunton Island", GlobalAtLeast(4336, 20), Both(KeepAlive, Both(LogGlobals({4336}), ExtinguishMarkedCars)), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
         }},
         // Sayonara Salvatore: he leaves Luigi's three game hours after the start; the clock jumps to 2 minutes before.
         {.script = "asuka1", .passedFlag = 1264, .start = kAsukasMarker, .steps = {
@@ -659,6 +701,15 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         // Love's Disappearance is a cutscene that registers its pass.
         {.script = "love7", .passedFlag = 1408, .start = kLovesMarker, .steps = {
             {"watch the cutscene", UntilMissionEnds, JustWait, 60},
+        }},
+        // The Vigilante and Firefighter jobs in Shoreside Vale, open by then: Asuka's last missions play there.
+        {.script = "copcar", .passedFlag = 0, .done = GlobalAtLeast(4328, 2), .start = kShoresideJobStart, .startModel = MODEL_POLICE, .startWithButton = true, .steps = {
+            {"eliminate 20 criminals in Shoreside Vale", GlobalAtLeast(4328, 2), Both(KeepAlive, Both(LogGlobals({4308}), Both(KillMarkedCarOccupants, KillMarked))), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
+        }},
+        {.script = "firetru", .passedFlag = 4220, .start = kShoresideJobStart, .startModel = 97, .startWithButton = true, .steps = {
+            {"put out 20 fires in Shoreside Vale", GlobalAtLeast(4220, 1), Both(KeepAlive, Both(LogGlobals({4340}), ExtinguishMarkedCars)), 1800},
+            {"cancel the job with the side mission button", UntilMissionEnds, CancelJob, 60},
         }},
         // Asuka's last missions, then The Exchange, the end of the story.
         {.script = "asusb1", .passedFlag = 1416, .start = kAsukasLastMarker, .steps = {
@@ -833,9 +884,17 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
     return run;
 }
 
+bool Sheets::Done(const Sheet& sheet) {
+    if (sheet.done) return sheet.done();
+    return Actions::ScriptGlobal(sheet.passedFlag) == 1 || (sheet.laterPassedFlag && Actions::ScriptGlobal(sheet.laterPassedFlag) == 1);
+}
+
 const Sheets::Sheet* Sheets::Find(const std::string& script) {
+    const Sheet* first = nullptr;
     for (const Sheet& sheet : Run()) {
-        if (script == sheet.script) return &sheet;
+        if (script != sheet.script) continue;
+        if (!Done(sheet)) return &sheet;
+        if (!first) first = &sheet;
     }
-    return nullptr;
+    return first;
 }

@@ -63,6 +63,8 @@ namespace Steps {
     Goal GlobalAtLeast(int global, int value);
     // Goal: both goals are reached.
     Goal AllOf(Goal first, Goal second);
+    // Goal: at least one of the two goals is reached.
+    Goal AnyOf(Goal first, Goal second);
     // Goal: the other goal is not reached, like no pickup left on the radar.
     Goal Not(Goal goal);
     // Goal: any mission blip, pickups and objects (like a ringing phone) included, lies within 20 m of a place on the map.
@@ -75,6 +77,8 @@ namespace Steps {
     Goal InScriptCar(int carGlobal);
     // Goal: a kill frenzy (START_KILL_FRENZY) is on, like the drive-by of Uzi Money.
     bool Frenzy();
+    // Goal: the player never gets tired, the reward of the Paramedic missions.
+    bool NeverTired();
     // Goal: one of the characters the script keeps in these globals, still alive, is within this distance of the car the script keeps in that global.
     Goal AnyCharNear(std::vector<int> charGlobals, int carGlobal, float distance);
 
@@ -165,6 +169,10 @@ namespace Steps {
     Action BlowUpCarsOfModel(int model);
     // Action: kills the nearby characters of these models, each first counted as the player's Uzi kill, for a mission that counts the player's kills by model (GET_NUM_OF_MODELS_KILLED_BY_PLAYER).
     Action KillModelsNear(std::vector<int> models);
+    // Action: puts out the fire on every marked car, as the fire truck's water cannon does (Firefighter).
+    void ExtinguishMarkedCars();
+    // Action: picks up the nearest marked character while the car has room (letting go one who cannot reach it), else drives to the nearest marked place, else tours these streets, for fares and patients (Taxi Driver, Paramedic); with newCarWhenStuck, three let go in a row get the player out, which ends the job so it starts again in a new car.
+    Action FerryMarked(std::vector<CVector> streets, bool newCarWhenStuck = false);
     // Action: puts the player (and their car) at the nearest marked place in 3D, at its own height, for checkpoint challenges whose places are all marked at once (the Patriot challenges, Multistorey Mayhem).
     void TouchCoordBlips();
     // Action: teleports to the nearest marked place more than 6 m away; with a race's current and next checkpoint both marked, it alternates and passes each.

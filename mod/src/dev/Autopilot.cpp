@@ -1,5 +1,8 @@
 #include <windows.h>
 #include <atomic>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -28,6 +31,25 @@
 namespace {
     // F8 pauses the autopilot; it plays as soon as a dev build starts, and pauses itself when it is stuck.
     bool g_paused = false;
+
+    // Crash reports written so far, a few at most in case one exception repeats.
+    std::atomic<int> g_crashesLogged{0};
+
+    // Sees every exception first: writes a fatal one with the module and offset it happened at, so the test loop tells a crash from a game closed by hand.
+    LONG CALLBACK LogCrash(EXCEPTION_POINTERS* info) {
+        const DWORD code = info->ExceptionRecord->ExceptionCode;
+        // Below 0xC0000000 are warnings and notices, and 0xE06D7363 is a C++ exception its code may catch.
+        if (code < 0xC0000000 || code == 0xE06D7363 || g_crashesLogged++ >= 3) return EXCEPTION_CONTINUE_SEARCH;
+        const void* address = info->ExceptionRecord->ExceptionAddress;
+        HMODULE module = nullptr;
+        char path[MAX_PATH] = "unknown module";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<const char*>(address), &module)) GetModuleFileNameA(module, path, MAX_PATH);
+        const char* name = std::strrchr(path, '\\') ? std::strrchr(path, '\\') + 1 : path;
+        char line[MAX_PATH + 96];
+        std::snprintf(line, sizeof(line), "Autopilot: the game crashed, exception 0x%08lX at 0x%p (%s+0x%lX)", code, address, name, static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(address) - reinterpret_cast<std::uintptr_t>(module)));
+        Log::Write(line);
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
 
     // The autopilot cannot go on: with quit_on_stuck it writes why and quits for the automatic test loop, else it pauses and records the player's fix.
     void Stuck(const std::string& why) {
@@ -132,6 +154,11 @@ namespace {
     // Runs before the game's handler: GTA III stops its loop once Windows tells it that it lost the focus, so in unattended runs it is never told.
     LRESULT CALLBACK BackgroundWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         if ((message == WM_ACTIVATEAPP && !wParam) || (message == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE)) return 0;
+        // What asks the game to close, so the test loop tells a window closed by hand from an exit of the game's own.
+        if (message == WM_CLOSE) Log::Write("Autopilot: the window was asked to close (closed by hand, Alt+F4, or the taskbar)");
+        if (message == WM_SYSCOMMAND && (wParam & 0xFFF0) == SC_CLOSE) Log::Write("Autopilot: the window's close command was used");
+        if (message == WM_QUERYENDSESSION || message == WM_ENDSESSION) Log::Write("Autopilot: Windows is ending the session");
+        if (message == WM_DESTROY) Log::Write("Autopilot: the window is being destroyed");
         return CallWindowProcA(g_originalWindowProc, window, message, wParam, lParam);
     }
 
@@ -209,7 +236,7 @@ namespace {
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
     bool StartNextMission() {
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
-            if (Actions::ScriptGlobal(sheet.passedFlag) == 1 || (sheet.laterPassedFlag && Actions::ScriptGlobal(sheet.laterPassedFlag) == 1)) continue;
+            if (Sheets::Done(sheet)) continue;
             if (!sheet.start) return false;
             if (sheet.beforeStart) sheet.beforeStart();
             const int now = CTimer::m_snTimeInMilliseconds;
@@ -223,6 +250,11 @@ namespace {
             }
             else if (!sheet.startModel && FindPlayerVehicle()) Actions::LeaveCarTo(*sheet.start);
             else if (Actions::Distance2D(Actions::PlayerPosition(), *sheet.start) > 1.0f) Actions::TeleportTo(*sheet.start);
+            else if (sheet.startWithButton && (!g_onMarkerSince || now - g_onMarkerSince < 5000)) {
+                // A job starts when its button is pressed in its vehicle, wherever that is.
+                if (!g_onMarkerSince) g_onMarkerSince = now;
+                Actions::PressSubMissionButton();
+            }
             else if (!g_onMarkerSince || now - g_onMarkerSince < 5000) {
                 if (!g_onMarkerSince) g_onMarkerSince = now;
                 return false;
@@ -346,7 +378,9 @@ void Autopilot::Update() {
     // A mission the run skips is not played, even for the frames it takes to run its passed routine.
     const char* running = Actions::RunningMission();
     if (running) g_onMarkerSince = 0;
-    FollowSheet(running && !g_skipped ? Sheets::Find(running) : nullptr);
+    // The sheet being played is kept while its mission runs, even once done, so a job played on each island finishes its own sheet first.
+    const bool keepSheet = running && g_sheet && std::string(running) == g_sheet->script;
+    FollowSheet(running && !g_skipped ? (keepSheet ? g_sheet : Sheets::Find(running)) : nullptr);
     if (g_paused) {
         // The clocks stop while the player plays by hand.
         g_lastChangeTime = now;
@@ -376,6 +410,8 @@ namespace {
         if (!Sheets::Find(name)) return;
         const std::string at = g_sheet && name == g_sheet->script && g_step < g_sheet->steps.size() ? " at " + StepLabel() : "";
         Log::Write("Autopilot: " + name + " failed" + at);
+        // A job keeps what it counted (fares, fires, criminals) when it ends, so one played for a minute before failing made progress and counts afresh.
+        if (g_sheet && name == g_sheet->script && g_sheet->startWithButton && CTimer::m_snTimeInMilliseconds - g_sheetStartTime >= 60000) g_failuresInARow[name] = 0;
         if (++g_failuresInARow[name] >= 2) {
             g_failuresInARow[name] = 0;
             Actions::LogWhereIAm();
@@ -389,6 +425,9 @@ void Autopilot::Install() {
     Missions::OnMissionStart(SkipIfBeforeStart);
     Missions::OnMissionFailed(OnRunMissionFailed);
     Missions::OnMissionPassed([](const std::string& name, const std::string&) { g_failuresInARow[name] = 0; });
+    AddVectoredExceptionHandler(1, LogCrash);
+    // A game that exits normally (closed by hand, or by our own quit) says so last.
+    std::atexit([] { Log::Write("Autopilot: the game is exiting"); });
     CreateThread(nullptr, 0, WatchThread, nullptr, 0, nullptr);
 }
 

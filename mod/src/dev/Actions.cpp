@@ -325,6 +325,31 @@ void Actions::SetCarHeading(float degrees) {
 }
 
 namespace {
+    // Until this game time, the side mission buttons are held down after the game reads the pads.
+    int g_subMissionButtonUntil = 0;
+    // CPad::UpdatePads in gta3.exe 1.0 (plugin-sdk: plugin_III/game_III/CPad.cpp): the scripts read the buttons it writes (IS_BUTTON_PRESSED reads NewState).
+    constexpr std::uintptr_t kUpdatePadsAddress = 0x492720;
+    using UpdatePadsFunction = void(__cdecl*)();
+    UpdatePadsFunction g_originalUpdatePads = nullptr;
+
+    // Runs instead of CPad::UpdatePads: the real pads first, then the buttons the autopilot holds (19 is R3, 14 Square, as the job triggers read them).
+    void __cdecl OurUpdatePads() {
+        g_originalUpdatePads();
+        if (CTimer::m_snTimeInMilliseconds >= g_subMissionButtonUntil) return;
+        CPad::GetPad(0)->NewState.ShockButtonR = 255;
+        CPad::GetPad(0)->NewState.ButtonSquare = 255;
+    }
+
+    // Hooks CPad::UpdatePads the first time the autopilot presses the side mission button.
+    bool HookPads() {
+        static bool hooked = false;
+        if (hooked) return true;
+        void* const target = reinterpret_cast<void*>(kUpdatePadsAddress);
+        hooked = MH_CreateHook(target, reinterpret_cast<void*>(&OurUpdatePads), reinterpret_cast<void**>(&g_originalUpdatePads)) == MH_OK && MH_EnableHook(target) == MH_OK;
+        Log::Write(hooked ? "Pad hook installed" : "Pad hook failed");
+        return hooked;
+    }
+
     // The car PushCar drives, as a pool handle, its speed in m/s, and the game time it stops at.
     int g_pushedCar = -1;
     float g_pushSpeed = 0.0f;
@@ -351,6 +376,12 @@ void Actions::UpdatePush() {
     car->bIsStatic = false;
     const CVector ahead = car->GetForward() * (g_pushSpeed / 50.0f);
     car->m_vecMoveSpeed = CVector(ahead.x, ahead.y, car->m_vecMoveSpeed.z);
+}
+
+void Actions::PressSubMissionButton() {
+    if (!HookPads()) return;
+    g_subMissionButtonUntil = CTimer::m_snTimeInMilliseconds + 500;
+    Log::Write("Pressing the side mission button");
 }
 
 void Actions::Honk() {

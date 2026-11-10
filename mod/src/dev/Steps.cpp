@@ -1,9 +1,11 @@
 #include <cmath>
+#include <cstdio>
 #include <utility>
 #include "plugin.h"
 #include "CDarkel.h"
 #include "CGarage.h"
 #include "CGarages.h"
+#include "CFireManager.h"
 #include "CHeli.h"
 #include "CObject.h"
 #include "CPhoneInfo.h"
@@ -109,6 +111,10 @@ Steps::Goal Steps::GlobalAtLeast(int global, int value) {
 
 Steps::Goal Steps::AllOf(Goal first, Goal second) {
     return [first = std::move(first), second = std::move(second)] { return first() && second(); };
+}
+
+Steps::Goal Steps::AnyOf(Goal first, Goal second) {
+    return [first = std::move(first), second = std::move(second)] { return first() || second(); };
 }
 
 Steps::Goal Steps::Not(Goal goal) {
@@ -269,6 +275,10 @@ Steps::Action Steps::ShootDownScriptHeli(int heliGlobal) {
         // What a rocket exploding within 8 m of it does (CHeli::TestRocketCollision); nothing while the script keeps it explosion proof.
         if (CHeli::TestRocketCollision(&at)) Log::Write("Shot the helicopter in g" + std::to_string(heliGlobal) + " down, as a rocket would");
     };
+}
+
+bool Steps::NeverTired() {
+    return CWorld::Players[CWorld::PlayerInFocus].m_bInfiniteSprint;
 }
 
 void Steps::GetCar() {
@@ -670,6 +680,74 @@ Steps::Action Steps::KillModelsNear(std::vector<int> models) {
     return [models = std::move(models)] {
         const int killed = KillModelsAsPlayer(models, WEAPONTYPE_UZI);
         if (killed > 0) Log::Write("Counted and killed " + std::to_string(killed) + " character(s) of the wanted models");
+    };
+}
+
+void Steps::ExtinguishMarkedCars() {
+    int put = 0;
+    for (const tRadarTrace& blip : CRadar::ms_RadarTrace) {
+        if (!blip.m_bInUse || blip.m_nRadarSprite != 0 || blip.m_nBlipType != BLIP_CAR) continue;
+        CVehicle* car = CPools::GetVehicle(blip.m_nEntityHandle);
+        if (!car) continue;
+        // What the fire truck's water cannon does to the fire on it, which IS_SCRIPT_FIRE_EXTINGUISHED then sees.
+        gFireManager.ExtinguishPoint(car->GetPosition(), 6.0f);
+        ++put;
+    }
+    if (put > 0) Log::Write("Put out the fire on " + std::to_string(put) + " marked car(s)");
+}
+
+Steps::Action Steps::FerryMarked(std::vector<CVector> streets, bool newCarWhenStuck) {
+    return [streets = std::move(streets), newCarWhenStuck, fareHandle = -1, nearSince = 0, letGoInARow = 0]() mutable {
+        CVehicle* car = FindPlayerVehicle();
+        if (!car || streets.empty()) return;
+        const int now = CTimer::m_snTimeInMilliseconds;
+        const CVector at = Actions::PlayerPosition();
+        const tRadarTrace* fare = Actions::NearestMissionBlip(BLIP_CHAR);
+        const tRadarTrace* destination = Actions::NearestMissionBlip(BLIP_COORD);
+        CVector place;
+        // A marked place means someone got in.
+        if (destination) letGoInARow = 0;
+        // Pick up while there is room and someone is marked, else drive the passengers to the marked place.
+        if (fare && car->m_nNumPassengers < car->m_nMaxPassengers && Actions::BlipPosition(*fare, place)) {
+            if (fare->m_nEntityHandle != fareHandle) {
+                fareHandle = fare->m_nEntityHandle;
+                nearSince = 0;
+            }
+            // A fare gets in a stopped car within 7 m of them in 3D (LOCATE_PLAYER_IN_CAR_CHAR_3D 7, 7, 2): 6 m off, at their height, as a car 4 m off can hit them.
+            if (Actions::Distance2D(at, place) > 6.5f || std::fabs(at.z - place.z) > 1.5f) {
+                Actions::TeleportBeside(place, 6.0f);
+                return;
+            }
+            if (!nearSince) nearSince = now;
+            if (now - nearSince < 12000) return;
+            // One who cannot reach the car is let go 90 m away (the mission then looks for another): off to the street farthest from them.
+            const CVector* farthest = &streets[0];
+            for (const CVector& street : streets) {
+                if (Actions::Distance2D(street, place) > Actions::Distance2D(*farthest, place)) farthest = &street;
+            }
+            char line[160];
+            std::snprintf(line, sizeof(line), "Leaving a fare who cannot reach the car: %.1f m away, %.1f m higher, %d passenger(s) aboard", Actions::Distance2D(at, place), place.z - at.z, static_cast<int>(car->m_nNumPassengers));
+            Log::Write(line);
+            nearSince = 0;
+            if (newCarWhenStuck && ++letGoInARow >= 3) {
+                Log::Write("Three fares in a row could not get in: getting out, which ends the job, to start it again in a new car");
+                letGoInARow = 0;
+                Actions::LeaveCarTo(at + CVector(0.0f, 6.0f, 0.0f));
+                return;
+            }
+            Actions::TeleportTo(*farthest);
+            return;
+        }
+        if (destination && Actions::BlipPosition(*destination, place)) {
+            if (Actions::Distance2D(at, place) > 2.0f) StopAt(place)();
+            return;
+        }
+        // Nobody marked: a fare only hails a moving car among passers-by, so the streets are toured.
+        std::size_t next = 0;
+        for (std::size_t i = 0; i < streets.size(); ++i) {
+            if (Actions::Distance2D(at, streets[i]) < 10.0f) next = (i + 1) % streets.size();
+        }
+        Actions::TeleportTo(streets[next]);
     };
 }
 

@@ -58,6 +58,8 @@ namespace Actions {
     void PushCar(float speed, int milliseconds);
     // Keeps up the push PushCar started; called once per frame.
     void UpdatePush();
+    // Holds the side mission button (R3, or Square in the controller setup that uses it) for half a second, through a hook on CPad::UpdatePads, as a player presses it in a job vehicle.
+    void PressSubMissionButton();
     // Gives the player back control, the normal camera and streaming, as a mission does; used after a mission is forced to pass from its start.
     void GiveControlBack();
     // Changes Claude's outfit as a mission does: UNDRESS_CHAR, LOAD_ALL_MODELS_NOW, DRESS_CHAR; "PLAYER" is his normal one, "PLAYERP" the prison one.

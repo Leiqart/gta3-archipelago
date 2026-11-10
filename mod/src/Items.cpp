@@ -1,4 +1,3 @@
-#include <iterator>
 #include <sstream>
 #include <string>
 #include "plugin.h"
@@ -10,58 +9,35 @@
 #include "Message.h"
 
 namespace {
-    // The apworld's item ids (item_name_to_id); never renumbered.
-    constexpr int kProgressiveLuigiMission = 1;
-    constexpr int kMoney = 2;
-    constexpr int kDontSpankUnlock = 4;
-    constexpr int kDriveMistyUnlock = 5;
-
-    // Luigi's missions in the order Progressive Luigi Mission unlocks them: Don't Spank Ma Bitch Up, then Drive Misty For Me.
-    constexpr unsigned char kLuigiChain[] = {20, 21};
-
-    // How many items of our slot's list this game has applied, and how many Progressive Luigi Missions among them.
+    // How many items of our slot's list this game has applied: an item sent again after a reconnection is not applied twice.
     int g_applied = 0;
-    std::size_t g_luigiReceived = 0;
 
-    // Applies one item in the game; false for an id this mod does not know.
-    bool Apply(int id) {
-        switch (id) {
-        case kProgressiveLuigiMission:
-            if (g_luigiReceived < std::size(kLuigiChain)) Markers::Unlock(kLuigiChain[g_luigiReceived]);
-            ++g_luigiReceived;
-            return true;
-        case kMoney:
-            CWorld::Players[CWorld::PlayerInFocus].m_nMoney += 10000;
-            return true;
-        case kDontSpankUnlock:
-            Markers::Unlock(20);
-            return true;
-        case kDriveMistyUnlock:
-            Markers::Unlock(21);
-            return true;
-        default:
-            return false;
-        }
+    // Does what the client says an item does: unlock a mission by its number, or add money; false for an effect this mod does not know.
+    bool Apply(const std::string& effect, int value) {
+        if (effect == "unlock") Markers::Unlock(static_cast<unsigned char>(value));
+        else if (effect == "money") CWorld::Players[CWorld::PlayerInFocus].m_nMoney += value;
+        else if (effect != "none") return false;
+        return true;
     }
 
-    // One "item <index> <id> <name>" line: a new item is applied and shown; one this game already applied, sent again after a reconnection, is skipped.
+    // One "item <index> <effect> <value> <name>" line: a new item is applied and shown; one this game already applied is skipped.
     void HandleLine(const std::string& line) {
         std::istringstream words(line);
-        std::string command, name;
-        int index = -1, id = -1;
-        words >> command >> index >> id;
+        std::string command, effect, name;
+        int index = -1, value = 0;
+        words >> command >> index >> effect >> value;
         std::getline(words >> std::ws, name);
-        if (command != "item" || index < 0 || id < 0) {
+        if (command != "item" || index < 0) {
             Log::Write("Unknown message from the client: " + line);
             return;
         }
         if (index < g_applied) return;
         g_applied = index + 1;
-        if (!Apply(id)) {
-            Log::Write("Item " + std::to_string(id) + " (" + name + ") is unknown to this mod");
+        if (!Apply(effect, value)) {
+            Log::Write("Item " + std::to_string(index) + " (" + name + ") has an effect this mod does not know: " + effect);
             return;
         }
-        Log::Write("Received item " + std::to_string(index) + ": " + name);
+        Log::Write("Received item " + std::to_string(index) + ": " + name + " (" + effect + " " + std::to_string(value) + ")");
         Message::Show("Received: " + name);
     }
 

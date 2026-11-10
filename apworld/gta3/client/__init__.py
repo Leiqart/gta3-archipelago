@@ -2,8 +2,9 @@ import asyncio
 
 import Utils
 from CommonClient import CommonContext, get_base_parser, gui_enabled, handle_url_arg, logger, server_loop
+from NetUtils import ClientStatus
 
-from ..missions import ALL_MISSIONS, CONTACTS, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions
+from ..missions import ALL_MISSIONS, CONTACTS, GOAL_MISSION, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions
 from .mod_link import ModLink
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
@@ -11,6 +12,8 @@ LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
 # What each unlock and progressive item unlocks: a mission's number in the game, which the mod's markers know.
 MISSION_OF_UNLOCK = {mission.unlock_id: mission.number for mission in MISSIONS if mission.unlock_id}
 CHAIN_OF_PROGRESSIVE = {contact.progressive_id: [mission.number for mission in contact_missions(contact.name)] for contact in CONTACTS}
+# The key the game registers when the goal mission is passed: its check also tells the room our slot has won.
+GOAL_KEY = next(mission.key for mission in ALL_MISSIONS if mission.name == GOAL_MISSION)
 
 
 class GTA3Context(CommonContext):
@@ -23,15 +26,25 @@ class GTA3Context(CommonContext):
         super().__init__(server_address, password)
         self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_items_to_mod)
 
-    # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has.
+    # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has; the goal mission's also wins.
     async def on_mod_check(self, key: str) -> None:
         location_id = LOCATION_OF_KEY.get(key)
         if location_id is None:
             logger.info(f"Mission {key} passed, it is not a location")
-        elif not self.mod.room_connected:
+            return
+        if not self.mod.room_connected:
             logger.info(f"Check {key} not sent: not connected to the room")
-        elif not await self.check_locations([location_id]):
+            return
+        if not await self.check_locations([location_id]):
             logger.info(f"Check {key} not sent: already checked or unknown location")
+        if key == GOAL_KEY:
+            await self.send_goal()
+
+    # Tells the room our slot has reached its goal: it announces it and, depending on the room's settings, releases our remaining items; sending it again changes nothing.
+    async def send_goal(self) -> None:
+        await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
+        self.finished_game = True
+        logger.info(f"Goal reached: {GOAL_MISSION} is passed")
 
     # What an item does in the game, as the mod applies it: ("unlock", mission number), ("money", amount), or ("none", 0).
     # A progressive item unlocks its contact's next mission: the nth copy received, counted up to this index, unlocks the nth mission.

@@ -1,0 +1,15 @@
+#pragma once
+#include <string>
+#include <vector>
+
+// The game's own data/main.scm, read once on first use: the main part, which the game loads at ScriptSpace[0], then each mission's code.
+namespace MainScript {
+    // The whole file; empty if it could not be read.
+    const std::string& Bytes();
+    // The size of the main part: positions below it are the same in the file and in ScriptSpace.
+    std::size_t MainSize();
+    // Each mission's code by mission number, as LOAD_AND_LAUNCH_MISSION_INTERNAL numbers them; empty for one the header points outside the file.
+    const std::vector<std::string>& Missions();
+    // True when a text key starts at this position: 1 to 7 of A-Z, 0-9 or _, then a zero byte.
+    bool IsKeyAt(const std::string& code, std::size_t at);
+}

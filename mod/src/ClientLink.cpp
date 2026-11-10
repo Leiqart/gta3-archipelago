@@ -12,6 +12,8 @@ namespace {
 
     // True while the client says it is connected to the room; written by the network thread, read by the game.
     std::atomic<bool> g_connected{false};
+    // The open connection to the client, so the game thread can send on it; INVALID_SOCKET while there is none.
+    std::atomic<SOCKET> g_socket{INVALID_SOCKET};
 
     // Records the room state, and logs it only when it changes.
     void SetConnected(bool connected) {
@@ -76,7 +78,9 @@ namespace {
             }
             Log::Write("Connected to the GTA3 Client");
             waitingLogged = false;
+            g_socket = sock;
             ReadLines(sock);
+            g_socket = INVALID_SOCKET;
             closesocket(sock);
             Log::Write("Lost the GTA3 Client");
             SetConnected(false);
@@ -90,4 +94,11 @@ void ClientLink::Start() {
 
 bool ClientLink::IsConnected() {
     return g_connected;
+}
+
+bool ClientLink::Send(const std::string& message) {
+    const SOCKET sock = g_socket;
+    if (sock == INVALID_SOCKET) return false;
+    const std::string line = message + "\n";
+    return send(sock, line.data(), static_cast<int>(line.size()), 0) == static_cast<int>(line.size());
 }

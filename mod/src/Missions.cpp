@@ -1,8 +1,6 @@
 #include <windows.h>
 #include <cctype>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 #include <vector>
 #include "plugin.h"
 #include "CCutsceneMgr.h"
@@ -11,6 +9,7 @@
 #include "CStats.h"
 #include "CTheScripts.h"
 #include "Log.h"
+#include "MainScript.h"
 #include "Missions.h"
 
 namespace {
@@ -37,47 +36,14 @@ namespace {
     // LOAD_AND_LAUNCH_MISSION copies a mission to ScriptSpace[SIZE_MAIN_SCRIPT]: its jumps count from there.
     constexpr unsigned int kMissionBase = 131072;
 
-    // Each mission's code, read once from the game's own data/main.scm: the header after the first two GOTOs lists where each one starts.
-    std::vector<std::string> LoadMissionCode() {
-        char exe[MAX_PATH] = {};
-        GetModuleFileNameA(nullptr, exe, MAX_PATH);
-        std::string folder = exe;
-        folder = folder.substr(0, folder.find_last_of('\\') + 1);
-        std::ifstream file(folder + "data\\main.scm", std::ios::binary);
-        const std::string scm((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        std::vector<std::string> missions;
-        auto read32 = [&scm](std::size_t at) { return at + 4 <= scm.size() ? *reinterpret_cast<const unsigned int*>(scm.data() + at) : 0u; };
-        // GOTO is 2 bytes of opcode, 1 of type, 4 of target: the first skips to the models segment, whose own GOTO skips to the missions segment.
-        const std::size_t missionsSegment = read32(read32(3) + 3);
-        if (scm.empty() || missionsSegment + 20 > scm.size()) return missions;
-        const unsigned short count = *reinterpret_cast<const unsigned short*>(scm.data() + missionsSegment + 16);
-        for (unsigned short i = 0; i < count; ++i) {
-            const std::size_t start = read32(missionsSegment + 20 + 4 * i);
-            const std::size_t end = i + 1 < count ? read32(missionsSegment + 24 + 4 * i) : scm.size();
-            if (start < end && end <= scm.size()) missions.push_back(scm.substr(start, end - start));
-        }
-        Log::Write("Read " + std::to_string(missions.size()) + " missions from data\\main.scm");
-        return missions;
-    }
-
     // The running mission's code, found by matching the start of its slot in ScriptSpace; behind it in memory lie the next missions of the file.
     const std::string* RunningMissionCode() {
-        static const std::vector<std::string> missions = LoadMissionCode();
+        const std::vector<std::string>& missions = MainScript::Missions();
         const char* slot = reinterpret_cast<const char*>(CTheScripts::ScriptSpace + kMissionBase);
         for (const std::string& code : missions) {
             if (code.size() >= 64 && std::memcmp(slot, code.data(), 64) == 0) return &code;
         }
         return nullptr;
-    }
-
-    // True when a GXT key starts at this offset: 1 to 7 of A-Z, 0-9 or _, then a zero byte.
-    bool IsKeyAt(const std::string& code, std::size_t at) {
-        for (std::size_t length = 0; length < 8 && at + length < code.size(); ++length) {
-            const char c = code[at + length];
-            if (c == 0) return length > 0;
-            if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) return false;
-        }
-        return false;
     }
 
     // A just-launched mission is still called "noname": its name is read from its code's first SCRIPT_NAME (opcode 0x03A4 and the name), in lowercase as the game stores it.
@@ -92,7 +58,7 @@ namespace {
         const std::string* code = RunningMissionCode();
         if (!code) return "";
         for (std::size_t at = code->find("\xA4\x03", 0, 2); at != std::string::npos; at = code->find("\xA4\x03", at + 1, 2)) {
-            if (!IsKeyAt(*code, at + 2)) continue;
+            if (!MainScript::IsKeyAt(*code, at + 2)) continue;
             std::string name;
             for (std::size_t i = at + 2; (*code)[i]; ++i) name += static_cast<char>(std::tolower(static_cast<unsigned char>((*code)[i])));
             return name;
@@ -114,7 +80,7 @@ namespace {
         const std::string* code = RunningMissionCode();
         if (!code) return -1;
         for (std::size_t at = code->find("\x18\x03", 0, 2); at != std::string::npos; at = code->find("\x18\x03", at + 1, 2)) {
-            if (!IsKeyAt(*code, at + 2)) continue;
+            if (!MainScript::IsKeyAt(*code, at + 2)) continue;
             const std::size_t ret = code->rfind("\x51\x00", at, 2);
             return ret == std::string::npos ? -1 : static_cast<int>(ret + 2);
         }

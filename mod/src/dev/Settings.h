@@ -17,4 +17,6 @@ namespace Settings {
     bool Mute();
     // play=0: the autopilot only skips the missions before start_at and gives the player control back, then lets them play by hand. Default: on.
     bool Play();
+    // skip_jobs=1: the run leaves out the vehicle jobs (Taxi Driver, Vigilante, Firefighter, Paramedic), which are no Archipelago locations yet. Default: off.
+    bool SkipJobs();
 }

@@ -159,6 +159,8 @@ namespace Steps {
     Action FollowRadarSparing(std::vector<int> charGlobals);
     // Action: heals the player and repairs their car, for a mission that only asks to survive a while with the police on them (Decoy), or gunmen (Smack Down).
     void KeepAlive();
+    // Action: makes the player proof against bullets, fire, explosions, collisions and melee, for a step where shots kill him faster than KeepAlive heals; the autopilot takes it back when the sheet ends.
+    void Invulnerable();
     // Action: moves every marked car, still whole, into a trap; with none marked, goes to the nearest marked place away from the trap, where the next one shows up (Bait).
     Action LureMarkedCarsTo(CVector trap);
     // Action: teleports the player to the place after the one they are near, round and round, for a mission whose targets only show up nearby (Espresso-2-Go).

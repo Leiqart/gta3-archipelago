@@ -470,7 +470,7 @@ Steps::Action Steps::DriveScriptCarAlong(int carGlobal, int phaseGlobal, std::ve
         // The script must see the car at each point before it sends it on: a point ahead of its phase waits.
         if (next >= route.size() || route[next].phase > Actions::ScriptGlobal(phaseGlobal)) return;
         const CVector& place = route[next].place;
-        Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
+        Actions::LoadScene(place);
         Command<Commands::SET_CAR_COORDINATES>(handle, place.x, place.y, place.z);
         Log::Write("Moved the car in g" + std::to_string(carGlobal) + " to route point " + std::to_string(next + 1) + "/" + std::to_string(route.size()));
         ++next;
@@ -570,6 +570,10 @@ Steps::Action Steps::FollowRadarSparing(std::vector<int> charGlobals) {
     };
 }
 
+void Steps::Invulnerable() {
+    Command<Commands::SET_CHAR_PROOFS>(CPools::GetPedRef(FindPlayerPed()), 1, 1, 1, 1, 1);
+}
+
 void Steps::KeepAlive() {
     CPlayerPed* player = FindPlayerPed();
     player->m_fHealth = 100.0f;
@@ -584,7 +588,7 @@ Steps::Action Steps::LureMarkedCarsTo(CVector trap) {
             if (!blip.m_bInUse || blip.m_nRadarSprite != 0 || blip.m_nBlipType != BLIP_CAR) continue;
             CVehicle* car = CPools::GetVehicle(blip.m_nEntityHandle);
             if (!car || Command<Commands::IS_CAR_DEAD>(blip.m_nEntityHandle) || Actions::Distance2D(car->GetPosition(), trap) < 10.0f) continue;
-            Command<Commands::LOAD_SCENE>(trap.x, trap.y, trap.z);
+            Actions::LoadScene(trap);
             Command<Commands::SET_CAR_COORDINATES>(blip.m_nEntityHandle, trap.x, trap.y, trap.z);
             Log::Write("Moved a marked car into the trap");
             moved = true;

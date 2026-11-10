@@ -611,9 +611,10 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
             {"collect the second briefcase", BlipNear(kThirdBusiness), CollectPickup},
             {"go to the third business", AnyBlipNear(kGangYard), StopAt(kThirdBusiness), 90},
             // The gang and the money only show up once Portland's collision is loaded (IS_COLLISION_IN_MEMORY 1), so once the player is there.
-            {"go to the gang's yard in Portland", Marked(BLIP_CHAR), GoTo(kGangYard), 60},
-            {"punish the gang and take the money", BlipNear(kCasino), Both(KillMarked, CollectPickup), 60},
-            {"take the money back to the casino", UntilMissionEnds, StopAt(kCasino), 60},
+            // The yard is in Leone ground: once Sayonara Salvatore is played, the Mafia shoots Claude on sight and kills him within 2 s, so he is invulnerable there.
+            {"go to the gang's yard in Portland", Marked(BLIP_CHAR), Both(Invulnerable, GoTo(kGangYard)), 60},
+            {"punish the gang and take the money", BlipNear(kCasino), Both(Invulnerable, Both(KillMarked, CollectPickup)), 60},
+            {"take the money back to the casino", UntilMissionEnds, Both(Invulnerable, StopAt(kCasino)), 60},
         }},
         // Smack Down: a dealer only appears within 90 m of the player, and shoots him; each kill (g11376) brings two more, and a waiting one leaves the streets after a delay down to 10 s.
         // The mission ends once none is left and passes with 8 kills: kill 8, then wait in Portland, far from them all, until the others have left.
@@ -859,7 +860,8 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
             {"blow up Diablo cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(137), 180},
         }},
         {.script = "rc2", .passedFlag = 1640, .start = kMafiaMassacreStart, .startModel = kToyzVan, .steps = {
-            {"blow up Mafia cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(134), 180},
+            // The Toyz van waits in Leone ground: once Sayonara Salvatore is played, the Mafia kills Claude while he drives the toy car, so he is invulnerable.
+            {"blow up Mafia cars for 2 minutes", UntilMissionEnds, Both(Invulnerable, BlowUpCarsOfModel(134)), 180},
         }},
         {.script = "rc3", .passedFlag = 1644, .start = kRumpoRampageStart, .startModel = kToyzVan, .steps = {
             {"blow up Hood cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(139), 180},

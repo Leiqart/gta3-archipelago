@@ -34,7 +34,7 @@ namespace {
 
     // The ground height at a place, looked for from 2 m above it so that a roof or an awning over it is not picked; loads the area first.
     float GroundAt(const CVector& place) {
-        Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
+        Actions::LoadScene(place);
         bool found = false;
         float ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 2.0f, &found);
         if (found && ground > place.z + 1.0f) {
@@ -129,13 +129,18 @@ CVector Actions::PlayerPosition() {
 
 void Actions::PlaceAt(const CVector& place) {
     LogPlace("Placing the player at", place);
-    Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
+    LoadScene(place);
     Command<Commands::SET_PLAYER_COORDINATES>(CWorld::PlayerInFocus, place.x, place.y, place.z);
     LogPlace("Placed, the player is now at", PlayerPosition());
 }
 
 float Actions::Distance2D(const CVector& a, const CVector& b) {
     return std::hypot(a.x - b.x, a.y - b.y);
+}
+
+void Actions::LoadScene(const CVector& place) {
+    Command<Commands::SWITCH_STREAMING>(1);
+    Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
 }
 
 void Actions::TeleportTo(const CVector& place) {
@@ -278,7 +283,7 @@ void Actions::TeleportCarrying(const CVector& place, const std::vector<int>& cha
         if (CPed* ped = CPools::GetPed(handle)) carried.emplace_back(ped, ped->GetPosition() - from);
     }
     LogPlace("Teleporting the boat and " + std::to_string(carried.size()) + " character(s) on it to", to);
-    Command<Commands::LOAD_SCENE>(to.x, to.y, to.z);
+    LoadScene(to);
     Command<Commands::SET_PLAYER_COORDINATES>(CWorld::PlayerInFocus, to.x, to.y, to.z);
     for (auto& [ped, offset] : carried) ped->Teleport(to + offset);
     LogPlace("Teleported, the player is now at", PlayerPosition());
@@ -303,7 +308,7 @@ void Actions::EnterCar(int carHandle) {
         if (car->m_vecMoveSpeed.Magnitude() * 50.0f < 2.0f) return;
         place = car->GetPosition();
     }
-    Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
+    LoadScene(place);
     Command<Commands::WARP_PLAYER_INTO_CAR>(CWorld::PlayerInFocus, carHandle);
     LogPlace("Entered the car at", place);
 }

@@ -20,6 +20,8 @@ namespace Actions {
     float Distance2D(const CVector& a, const CVector& b);
     // Loads the area, then puts the player on the ground there; the game moves the car and its passengers too.
     void TeleportTo(const CVector& place);
+    // Loads the area around a place, as LOAD_SCENE does, with streaming on: a mission's trigger switches it off until the mission's setup switches it back on, and LOAD_SCENE then waits forever.
+    void LoadScene(const CVector& place);
     // Puts the player at a place's own height, without looking for the ground, for a marker under a low roof the ground search would land on.
     void PlaceAt(const CVector& place);
     // Teleports the player (and their car) this far beside a character or car, on a side whose ground is at its height.

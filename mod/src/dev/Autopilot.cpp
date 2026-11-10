@@ -13,9 +13,12 @@
 #include "CGame.h"
 #include "CMenuManager.h"
 #include "CPad.h"
+#include "CPlayerInfo.h"
+#include "CPlayerPed.h"
 #include "CPools.h"
 #include "CTimer.h"
 #include "CVehicle.h"
+#include "CWanted.h"
 #include "CWorld.h"
 #include "common.h"
 #include "extensions/ScriptCommands.h"
@@ -245,7 +248,7 @@ namespace {
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
     bool StartNextMission() {
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
-            if (Sheets::Done(sheet)) continue;
+            if (Sheets::Done(sheet) || (Settings::SkipJobs() && sheet.startWithButton)) continue;
             if (!sheet.start) return false;
             if (sheet.beforeStart) sheet.beforeStart();
             const int now = CTimer::m_snTimeInMilliseconds;
@@ -317,6 +320,8 @@ namespace {
         if (sheet == g_sheet) return;
         const int now = CTimer::m_snTimeInMilliseconds;
         if (g_sheet) Log::Write("Autopilot: the " + std::string(g_sheet->script) + " sheet ended after " + Seconds(now - g_sheetStartTime));
+        // A step may have made the player invulnerable (Steps::Invulnerable): he is mortal again between sheets.
+        if (g_sheet && FindPlayerPed()) plugin::Command<plugin::Commands::SET_CHAR_PROOFS>(CPools::GetPedRef(FindPlayerPed()), 0, 0, 0, 0, 0);
         g_sheet = sheet;
         g_step = 0;
         g_sheetStartTime = now;
@@ -424,6 +429,10 @@ namespace {
         if (!Sheets::Find(name)) return;
         const std::string at = g_sheet && name == g_sheet->script && g_step < g_sheet->steps.size() ? " at " + StepLabel() : "";
         Log::Write("Autopilot: " + name + " failed" + at);
+        // Whether the game ended it by the player's death or arrest, the only ways most missions fail, with what led there.
+        const CPlayerInfo& info = CWorld::Players[CWorld::PlayerInFocus];
+        const char* state = info.m_nPlayerState == PLAYERSTATE_HASDIED ? "dead" : info.m_nPlayerState == PLAYERSTATE_HASBEENARRESTED ? "arrested" : "playing";
+        if (CPlayerPed* player = FindPlayerPed()) Log::Write(std::string("  the player is ") + state + ", health " + std::to_string(static_cast<int>(player->m_fHealth)) + ", wanted level " + std::to_string(player->m_pWanted ? player->m_pWanted->m_nWantedLevel : 0));
         // A job keeps what it counted (fares, fires, criminals) when it ends, so one played for a minute before failing made progress and counts afresh.
         if (g_sheet && name == g_sheet->script && g_sheet->startWithButton && CTimer::m_snTimeInMilliseconds - g_sheetStartTime >= 60000) g_failuresInARow[name] = 0;
         if (++g_failuresInARow[name] >= 2) {

@@ -4,8 +4,12 @@
 #include "CDarkel.h"
 #include "CGarage.h"
 #include "CGarages.h"
+#include "CHeli.h"
+#include "CObject.h"
 #include "CPhoneInfo.h"
+#include "CPacManPickups.h"
 #include "CPickups.h"
+#include "CPlane.h"
 #include "CPlayerPed.h"
 #include "CPools.h"
 #include "CVehicle.h"
@@ -239,6 +243,34 @@ Steps::Action Steps::StandAt(CVector place) {
     };
 }
 
+Steps::Action Steps::ShortenTimer(int timerGlobal, int milliseconds) {
+    return [timerGlobal, milliseconds] {
+        if (Actions::ScriptGlobal(timerGlobal) <= milliseconds) return;
+        Actions::SetScriptGlobal(timerGlobal, milliseconds);
+        Log::Write("Moved the countdown in g" + std::to_string(timerGlobal) + " on to " + std::to_string(milliseconds / 1000) + " s");
+    };
+}
+
+Steps::Action Steps::ShootDownDrugPlane(CVector place, float distance) {
+    return [place, distance] {
+        CPlane* plane = pDrugRunCesna;
+        if (!plane || plane->m_bHasBeenHit || Actions::Distance2D(plane->GetPosition(), place) > distance) return;
+        CVector at = plane->GetPosition();
+        // What a rocket exploding within 25 m of it does (CPlane::TestRocketCollision): the plane is hit and crashes.
+        if (CPlane::TestRocketCollision(&at)) Log::Write("Shot the drug plane down, as a rocket would");
+    };
+}
+
+Steps::Action Steps::ShootDownScriptHeli(int heliGlobal) {
+    return [heliGlobal] {
+        CVehicle* heli = ScriptCar(heliGlobal);
+        if (!heli) return;
+        CVector at = heli->GetPosition();
+        // What a rocket exploding within 8 m of it does (CHeli::TestRocketCollision); nothing while the script keeps it explosion proof.
+        if (CHeli::TestRocketCollision(&at)) Log::Write("Shot the helicopter in g" + std::to_string(heliGlobal) + " down, as a rocket would");
+    };
+}
+
 void Steps::GetCar() {
     if (!FindPlayerVehicle()) Actions::GiveCar();
 }
@@ -324,6 +356,21 @@ Steps::Action Steps::KillScriptChars(std::vector<int> charGlobals) {
             ++killed;
         }
         if (killed > 0) Log::Write("Killed " + std::to_string(killed) + " character(s) of the mission");
+    };
+}
+
+Steps::Action Steps::KillScriptCharsWith(std::vector<int> charGlobals, eWeaponType weapon) {
+    return [charGlobals = std::move(charGlobals), weapon] {
+        int killed = 0;
+        for (int global : charGlobals) {
+            const int handle = Actions::ScriptGlobal(global);
+            CPed* ped = CPools::GetPed(handle);
+            if (!ped || Command<Commands::IS_CHAR_DEAD>(handle)) continue;
+            // Dealt by the player with this weapon, which HAS_CHAR_BEEN_DAMAGED_BY_WEAPON then sees (the Rumble's bats only).
+            ped->InflictDamage(FindPlayerPed(), weapon, 1000.0f, PEDPIECE_TORSO, 0);
+            ++killed;
+        }
+        if (killed > 0) Log::Write("Killed " + std::to_string(killed) + " character(s) of the mission with weapon " + std::to_string(static_cast<int>(weapon)));
     };
 }
 
@@ -445,6 +492,20 @@ void Steps::SailToFloatingPackages() {
     if (Actions::Distance2D(nearest->GetPosition(), from) > 1.0f) Actions::TeleportCarrying(nearest->GetPosition(), {});
 }
 
+Steps::Action Steps::SmashMarkedObjectsNear(float distance) {
+    return [distance] {
+        const CVector at = Actions::PlayerPosition();
+        for (const tRadarTrace& blip : CRadar::ms_RadarTrace) {
+            if (!blip.m_bInUse || blip.m_nRadarSprite != 0 || blip.m_nBlipType != BLIP_OBJECT) continue;
+            CObject* object = CPools::GetObject(blip.m_nEntityHandle);
+            if (!object || Actions::Distance2D(object->GetPosition(), at) > distance) continue;
+            // The damage a car driven into it deals: the object breaks, which HAS_OBJECT_BEEN_DAMAGED sees (bRenderDamaged, or no longer visible).
+            object->ObjectDamage(1000.0f);
+            Log::Write("Smashed a marked object");
+        }
+    };
+}
+
 void Steps::ExplodeMarkedObjects() {
     for (const tRadarTrace& blip : CRadar::ms_RadarTrace) {
         CVector position;
@@ -547,26 +608,87 @@ Steps::Action Steps::TourPlaces(std::vector<CVector> places) {
     };
 }
 
+namespace {
+    // Kills the living characters of these models within 120 m of the player, each first counted as the player's kill with this weapon, as the game counts one; returns how many.
+    int KillModelsAsPlayer(const std::vector<int>& models, eWeaponType weapon) {
+        CPlayerPed* player = FindPlayerPed();
+        auto* pool = CPools::ms_pPedPool;
+        int killed = 0;
+        for (int i = 0; i < pool->m_nSize; ++i) {
+            CPed* ped = pool->GetAt(i);
+            if (!ped || ped == player || Actions::Distance2D(ped->GetPosition(), Actions::PlayerPosition()) > 120.0f) continue;
+            const int handle = CPools::GetPedRef(ped);
+            if (Command<Commands::IS_CHAR_DEAD>(handle)) continue;
+            bool wanted = false;
+            for (int model : models) wanted = wanted || (model >= 0 && ped->m_nModelIndex == model);
+            if (!wanted) continue;
+            // Counted first (kill frenzies, GET_NUM_OF_MODELS_KILLED_BY_PLAYER), as the game does; EXPLODE_CHAR_HEAD alone has no killer.
+            CDarkel::RegisterKillByPlayer(ped, weapon, false);
+            Command<Commands::EXPLODE_CHAR_HEAD>(handle);
+            ++killed;
+        }
+        return killed;
+    }
+}
+
 void Steps::KillFrenzyTargets() {
     if (!CDarkel::FrenzyOnGoing()) return;
-    const int models[] = {CDarkel::ModelToKill, CDarkel::ModelToKill2, CDarkel::ModelToKill3, CDarkel::ModelToKill4};
-    CPlayerPed* player = FindPlayerPed();
-    auto* pool = CPools::ms_pPedPool;
-    int killed = 0;
-    for (int i = 0; i < pool->m_nSize; ++i) {
-        CPed* ped = pool->GetAt(i);
-        if (!ped || ped == player || Actions::Distance2D(ped->GetPosition(), Actions::PlayerPosition()) > 120.0f) continue;
-        const int handle = CPools::GetPedRef(ped);
-        if (Command<Commands::IS_CHAR_DEAD>(handle)) continue;
-        bool wanted = false;
-        for (int model : models) wanted = wanted || (model >= 0 && ped->m_nModelIndex == model);
-        if (!wanted) continue;
-        // Counted first, as the game does when the player kills one with the frenzy's weapon; EXPLODE_CHAR_HEAD alone has no killer.
-        CDarkel::RegisterKillByPlayer(ped, CDarkel::WeaponType, false);
-        Command<Commands::EXPLODE_CHAR_HEAD>(handle);
-        ++killed;
-    }
+    const int killed = KillModelsAsPlayer({CDarkel::ModelToKill, CDarkel::ModelToKill2, CDarkel::ModelToKill3, CDarkel::ModelToKill4}, CDarkel::WeaponType);
     if (killed > 0) Log::Write("Counted and killed " + std::to_string(killed) + " frenzy target(s)");
+}
+
+Steps::Action Steps::BlowUpCarsOfModel(int model) {
+    return [model] {
+        const CVector at = Actions::PlayerPosition();
+        auto* pool = CPools::ms_pVehiclePool;
+        int blown = 0;
+        for (int i = 0; i < pool->m_nSize; ++i) {
+            CVehicle* car = pool->GetAt(i);
+            if (!car || car == FindPlayerVehicle() || car->m_nModelIndex != model || Actions::Distance2D(car->GetPosition(), at) > 150.0f) continue;
+            const int handle = CPools::GetVehicleRef(car);
+            if (Command<Commands::IS_CAR_DEAD>(handle)) continue;
+            // Counted first, as the game counts a car the player blows up (GET_NUM_OF_MODELS_KILLED_BY_PLAYER); EXPLODE_CAR alone has no culprit.
+            CDarkel::RegisterCarBlownUpByPlayer(car);
+            Command<Commands::EXPLODE_CAR>(handle);
+            ++blown;
+        }
+        if (blown > 0) {
+            Log::Write("Counted and blew up " + std::to_string(blown) + " car(s) of model " + std::to_string(model));
+            return;
+        }
+        // Gang cars are rare in traffic: one is created 25 m off, far enough that its explosion spares the player's own vehicle.
+        Command<Commands::REQUEST_MODEL>(model);
+        Command<Commands::LOAD_ALL_MODELS_NOW>();
+        int car = 0;
+        Command<Commands::CREATE_CAR>(model, at.x + 25.0f, at.y, -100.0f, &car);
+        Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(car);
+        Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(model);
+    };
+}
+
+Steps::Action Steps::KillModelsNear(std::vector<int> models) {
+    return [models = std::move(models)] {
+        const int killed = KillModelsAsPlayer(models, WEAPONTYPE_UZI);
+        if (killed > 0) Log::Write("Counted and killed " + std::to_string(killed) + " character(s) of the wanted models");
+    };
+}
+
+void Steps::TouchCoordBlips() {
+    const CVector at = Actions::PlayerPosition();
+    const tRadarTrace* nearest = nullptr;
+    CVector target;
+    float best = 1e9f;
+    for (const tRadarTrace& blip : CRadar::ms_RadarTrace) {
+        CVector place;
+        if (!blip.m_bInUse || blip.m_nRadarSprite != 0 || blip.m_nBlipType != BLIP_COORD || !Actions::BlipPosition(blip, place)) continue;
+        // In 3D, for checkpoints stacked on the floors of a car park (Multistorey Mayhem).
+        const float distance = (place - at).Magnitude();
+        if (distance < 1.5f || distance >= best) continue;
+        best = distance;
+        nearest = &blip;
+        target = place;
+    }
+    if (nearest) Actions::PlaceAt(target + CVector(0.0f, 0.0f, 1.0f));
 }
 
 void Steps::AlternateCoordBlips() {
@@ -590,6 +712,9 @@ Steps::Action Steps::MoveScriptCarTo(int carGlobal, CVector place) {
         CVehicle* car = ScriptCar(carGlobal);
         if (!car || Actions::Distance2D(car->GetPosition(), place) < 3.0f) return;
         Command<Commands::SET_CAR_COORDINATES>(Actions::ScriptGlobal(carGlobal), place.x, place.y, place.z);
+        // A teleported car can stay static, hanging where it was put: woken and nudged down, it falls (into the sea, which IS_CAR_IN_WATER then sees).
+        car->bIsStatic = false;
+        car->m_vecMoveSpeed = CVector(0.0f, 0.0f, -0.1f);
         Log::Write("Moved the car in g" + std::to_string(carGlobal));
     };
 }
@@ -616,17 +741,29 @@ Steps::Action Steps::DriveScriptCar(int carGlobal, Action then) {
     };
 }
 
-Steps::Action Steps::CollectByCarAndDeliver(int carriedGlobal, int batch, CVector dropOff) {
-    return [carriedGlobal, batch, dropOff] {
+Steps::Action Steps::CollectByCarAndDeliver(int carriedGlobal, int batch, CVector dropOff, CVector field) {
+    return [carriedGlobal, batch, dropOff, field] {
         if (!FindPlayerVehicle()) {
             Actions::GiveCar();
             return;
         }
-        const tRadarTrace* pickup = Actions::NearestMissionBlip(BLIP_OBJECT);
         const int carried = Actions::ScriptGlobal(carriedGlobal);
+        const tRadarTrace* blip = Actions::NearestMissionBlip(BLIP_OBJECT);
         CVector target;
-        if (carried < batch && pickup && Actions::BlipPosition(*pickup, target)) Actions::TeleportTo(target);
+        bool found = blip && Actions::BlipPosition(*blip, target);
+        // Unmarked, like the platinum of Bullion Run (START_PACMAN_SCRAMBLE): the nearest bar left on the field, which a car collects by touching it.
+        float nearest = 1e9f;
+        for (const CPacManPickup& bar : CPacManPickups::aPickUps) {
+            if (blip || bar.m_nType == 0 || Actions::Distance2D(bar.m_vecPos, field) > 150.0f) continue;
+            const float distance = Actions::Distance2D(bar.m_vecPos, Actions::PlayerPosition());
+            if (distance >= nearest) continue;
+            nearest = distance;
+            target = bar.m_vecPos;
+            found = true;
+        }
+        if (carried < batch && found) Actions::TeleportTo(target);
         else if (carried > 0 && Actions::Distance2D(Actions::PlayerPosition(), dropOff) > 2.0f) Actions::TeleportTo(dropOff);
+        else if (!found && Actions::Distance2D(Actions::PlayerPosition(), field) > 10.0f) Actions::TeleportTo(field);
     };
 }
 
@@ -711,6 +848,20 @@ Steps::Action Steps::LogPointOnScreen(CVector point) {
         if (onScreen == last) return;
         Log::Write(std::string("The point ") + std::to_string(point.x) + ", " + std::to_string(point.y) + (onScreen ? " is on screen" : " is off screen"));
         last = onScreen;
+    };
+}
+
+Steps::Action Steps::RollInto(CVector start, float heading, float speed) {
+    return [start, heading, speed] {
+        if (!FindPlayerVehicle()) return;
+        // Once it has rolled on from the start it is in, or settling: taking it back out would fail the mission.
+        const float rolled = Actions::Distance2D(Actions::PlayerPosition(), start);
+        if (rolled > 4.0f && rolled < 15.0f) return;
+        Actions::TeleportTo(start);
+        Actions::SetCarHeading(heading);
+        Command<Commands::SET_CAMERA_BEHIND_PLAYER>();
+        // Driven in, the car lands on a floor the ground search does not see (a garage's), where a car teleported inside falls through.
+        Actions::PushCar(speed, 1800);
     };
 }
 

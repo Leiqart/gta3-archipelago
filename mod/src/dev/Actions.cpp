@@ -15,6 +15,7 @@
 #include "CProjectileInfo.h"
 #include "CRunningScript.h"
 #include "CTheScripts.h"
+#include "CTheZones.h"
 #include "CVehicle.h"
 #include "CWorld.h"
 #include "common.h"
@@ -36,7 +37,20 @@ namespace {
         Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
         bool found = false;
         float ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 2.0f, &found);
+        if (found && ground > place.z + 1.0f) {
+            bool floor = false;
+            const float lower = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 0.5f, &floor);
+            // A low roof over the place, like the Panlantic lift's, when a floor lies at the place's own height under it.
+            if (floor && std::fabs(lower - place.z) < 1.5f) ground = lower;
+        }
         if (!found) ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, 1000.0f, &found);
+        if (!found) {
+            // No ground at all: another island's collision is not loaded yet; load it, as a mission does before it teleports there, and look again.
+            const int level = CTheZones::GetLevelFromPosition(place);
+            if (level != 0) Command<Commands::LOAD_COLLISION_WITH_SCREEN>(level);
+            ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, place.z + 2.0f, &found);
+            if (!found) ground = CWorld::FindGroundZFor3DCoord(place.x, place.y, 1000.0f, &found);
+        }
         // No ground at all in another part of the city whose collision is not loaded yet: the place's own height, as the sheets give it, is the ground.
         return found ? ground : place.z;
     }
@@ -282,10 +296,12 @@ void Actions::EnterCar(int carHandle) {
         return;
     }
     // A far car sits in an area the game has not loaded: walking up beside it first, then getting in on the next step, is what a mission expects.
-    const CVector place = car->GetPosition();
+    CVector place = car->GetPosition();
     if (Distance2D(PlayerPosition(), place) > 10.0f) {
         TeleportBeside(place);
-        return;
+        // A car driving off would be gone again by the next step, like the ice cream van on its rounds: get in at once.
+        if (car->m_vecMoveSpeed.Magnitude() * 50.0f < 2.0f) return;
+        place = car->GetPosition();
     }
     Command<Commands::LOAD_SCENE>(place.x, place.y, place.z);
     Command<Commands::WARP_PLAYER_INTO_CAR>(CWorld::PlayerInFocus, carHandle);
@@ -306,6 +322,35 @@ void Actions::SetCarHeading(float degrees) {
     if (!car) return;
     Command<Commands::SET_CAR_HEADING>(CPools::GetVehicleRef(car), degrees);
     Log::Write("Turned the car to heading " + std::to_string(degrees));
+}
+
+namespace {
+    // The car PushCar drives, as a pool handle, its speed in m/s, and the game time it stops at.
+    int g_pushedCar = -1;
+    float g_pushSpeed = 0.0f;
+    int g_pushUntil = 0;
+}
+
+void Actions::PushCar(float speed, int milliseconds) {
+    CVehicle* car = FindPlayerVehicle();
+    if (!car) return;
+    g_pushedCar = CPools::GetVehicleRef(car);
+    g_pushSpeed = speed;
+    g_pushUntil = CTimer::m_snTimeInMilliseconds + milliseconds;
+    Log::Write("Driving the car ahead at " + std::to_string(static_cast<int>(speed)) + " m/s for " + std::to_string(milliseconds) + " ms");
+}
+
+void Actions::UpdatePush() {
+    if (g_pushedCar < 0) return;
+    CVehicle* car = CPools::GetVehicle(g_pushedCar);
+    if (!car || CTimer::m_snTimeInMilliseconds > g_pushUntil) {
+        g_pushedCar = -1;
+        return;
+    }
+    // The game's own friction and brakes stop a car pushed once: the speed is set again each frame, the fall kept.
+    car->bIsStatic = false;
+    const CVector ahead = car->GetForward() * (g_pushSpeed / 50.0f);
+    car->m_vecMoveSpeed = CVector(ahead.x, ahead.y, car->m_vecMoveSpeed.z);
 }
 
 void Actions::Honk() {
@@ -353,4 +398,8 @@ const char* Actions::RunningMission() {
 
 int Actions::ScriptGlobal(int offset) {
     return *reinterpret_cast<int*>(CTheScripts::ScriptSpace + offset);
+}
+
+void Actions::SetScriptGlobal(int offset, int value) {
+    *reinterpret_cast<int*>(CTheScripts::ScriptSpace + offset) = value;
 }

@@ -5,6 +5,7 @@
 #include <string>
 #include "plugin.h"
 #include "CCamera.h"
+#include "CCredits.h"
 #include "CCutsceneMgr.h"
 #include "CGame.h"
 #include "CMenuManager.h"
@@ -66,6 +67,9 @@ namespace {
     bool g_cutsceneSkipped = false;
     // Game time of the last change in what the autopilot sees: outside the sheets, 30 s without one means the run is stuck.
     int g_lastChangeTime = 0;
+    // Game time of the last sign of progress anywhere (what the autopilot sees, a new step, the player 5 m further), and the player's place then: 2 minutes without one means the run is stuck.
+    int g_lastProgressTime = 0;
+    CVector g_lastProgressPlace;
     // The sheet of the mission skipped last, until it has ended and its lasting changes are replayed; nullptr when none waits.
     const Sheets::Sheet* g_skipped = nullptr;
 
@@ -165,6 +169,13 @@ namespace {
         }
     }
 
+    // Ends the end credits as a player's button does (the last mission only passes once they are over), one second in.
+    void SkipCredits() {
+        if (!CCredits::bCreditsGoing || CTimer::m_snTimeInMilliseconds - CCredits::CreditsStartTime < 1000) return;
+        CCredits::Stop();
+        Log::Write("Autopilot: skipped the end credits");
+    }
+
     // Skips a playing cutscene once, only when the game itself lets a player do it: loaded, its flyby camera running, never the ending; one second in.
     void SkipCutscene() {
         if (!CCutsceneMgr::ms_running) {
@@ -198,11 +209,19 @@ namespace {
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
     bool StartNextMission() {
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
-            if (Actions::ScriptGlobal(sheet.passedFlag) == 1) continue;
+            if (Actions::ScriptGlobal(sheet.passedFlag) == 1 || (sheet.laterPassedFlag && Actions::ScriptGlobal(sheet.laterPassedFlag) == 1)) continue;
             if (!sheet.start) return false;
             if (sheet.beforeStart) sheet.beforeStart();
             const int now = CTimer::m_snTimeInMilliseconds;
-            if (FindPlayerVehicle()) Actions::LeaveCarTo(*sheet.start);
+            // Most missions start on foot; a side mission like RC Toyz starts with the player in a vehicle of its model.
+            const bool inStartModel = sheet.startModel && FindPlayerVehicle() && plugin::Command<plugin::Commands::IS_PLAYER_IN_MODEL>(CWorld::PlayerInFocus, sheet.startModel);
+            // Those triggers want the vehicle got into on the spot (the Patriot challenges flag one driven in): on foot to the start first, then into a new one there.
+            if (sheet.startModel && !inStartModel) {
+                if (FindPlayerVehicle()) Actions::LeaveCarTo(*sheet.start);
+                else if (Actions::Distance2D(Actions::PlayerPosition(), *sheet.start) > 3.0f) Actions::TeleportTo(*sheet.start);
+                else Actions::GiveCar(sheet.startModel);
+            }
+            else if (!sheet.startModel && FindPlayerVehicle()) Actions::LeaveCarTo(*sheet.start);
             else if (Actions::Distance2D(Actions::PlayerPosition(), *sheet.start) > 1.0f) Actions::TeleportTo(*sheet.start);
             else if (!g_onMarkerSince || now - g_onMarkerSince < 5000) {
                 if (!g_onMarkerSince) g_onMarkerSince = now;
@@ -210,7 +229,9 @@ namespace {
             } else {
                 // A trigger that saw the player on its marker unable to start (CAN_PLAYER_START_MISSION, false while landing from the teleport) waits for them to leave it.
                 Log::Write("Autopilot: " + std::string(sheet.script) + " did not start on its marker, stepping off it and back");
-                Actions::TeleportTo(*sheet.start + CVector(6.0f, 6.0f, 0.0f));
+                // The RC Toyz triggers also wait for the player to have left the van since the last one (g1632): out of it, and into a new one next.
+                if (sheet.startModel) Actions::LeaveCarTo(Actions::PlayerPosition() + CVector(0.0f, 6.0f, 0.0f));
+                else Actions::TeleportTo(*sheet.start + CVector(6.0f, 6.0f, 0.0f));
             }
             g_onMarkerSince = 0;
             return true;
@@ -246,6 +267,7 @@ namespace {
     // Starts the clock of the current step and writes it to the log.
     void BeginStep() {
         g_stepStartTime = CTimer::m_snTimeInMilliseconds;
+        g_lastProgressTime = g_stepStartTime;
         Log::Write("Autopilot: " + StepLabel());
     }
 
@@ -263,8 +285,15 @@ namespace {
         BeginStep();
     }
 
-    // The test loop's rule: inside a sheet, each step must be done in its time; outside, what the autopilot sees must change within 30 s.
+    // The test loop's rules: nothing at all may stay unchanged for 2 minutes; inside a sheet, each step must be done in its time; outside, what the autopilot sees must change within 30 s.
     bool CheckStuck(const std::string& seen, int now) {
+        if (now - g_lastProgressTime > 120000) {
+            g_lastProgressTime = now;
+            Actions::LogWhereIAm();
+            const std::string at = g_sheet && g_step < g_sheet->steps.size() ? ", at " + StepLabel() : "";
+            Stuck("nothing changed for 120 s (what the autopilot sees, its step, the player's place)" + at + ", the autopilot sees: " + seen);
+            return true;
+        }
         if (g_sheet && g_step < g_sheet->steps.size()) {
             const int timeout = g_sheet->steps[g_step].timeoutSeconds;
             if (now - g_stepStartTime <= timeout * 1000) return false;
@@ -306,8 +335,14 @@ void Autopilot::Update() {
         Log::Write("Autopilot sees: " + seen);
         g_lastSeen = seen;
         g_lastChangeTime = now;
+        g_lastProgressTime = now;
+    }
+    if (Actions::Distance2D(Actions::PlayerPosition(), g_lastProgressPlace) > 5.0f) {
+        g_lastProgressPlace = Actions::PlayerPosition();
+        g_lastProgressTime = now;
     }
     LogCarOnExit();
+    Actions::UpdatePush();
     // A mission the run skips is not played, even for the frames it takes to run its passed routine.
     const char* running = Actions::RunningMission();
     if (running) g_onMarkerSince = 0;
@@ -315,12 +350,14 @@ void Autopilot::Update() {
     if (g_paused) {
         // The clocks stop while the player plays by hand.
         g_lastChangeTime = now;
+        g_lastProgressTime = now;
         g_stepStartTime = now;
         return;
     }
     if (CheckStuck(seen, now)) return;
     FinishSkip();
     SkipCutscene();
+    SkipCredits();
     // No action during a cutscene, or while a mission script has taken control of the player, and 1.5 s more once it gives it back.
     if (CCutsceneMgr::ms_running || CPad::GetPad(0)->DisablePlayerControls) {
         g_nextStepTime = now + 1500;

@@ -5,6 +5,7 @@
 #include <vector>
 #include "CRadar.h"
 #include "CVector.h"
+#include "eWeaponType.h"
 
 // Dev builds only: the dictionary of goals and actions the mission sheets are written with (Sheets.cpp); everything runs on the game thread.
 namespace Steps {
@@ -101,6 +102,12 @@ namespace Steps {
     Action StandAt(CVector place);
     // Action: writes to the log whether a point is on screen whenever that changes, for a mission that waits for the player to look at something.
     Action LogPointOnScreen(CVector point);
+    // Action: moves a mission's countdown in this global on to this many milliseconds when it shows more, like the clock moved on for a mission that waits for an hour.
+    Action ShortenTimer(int timerGlobal, int milliseconds);
+    // Action: shoots down the drug-run plane (START_DRUG_RUN) once it flies within this distance of a place, as a rocket fired at it would.
+    Action ShootDownDrugPlane(CVector place, float distance);
+    // Action: shoots down the helicopter the script keeps in this global, as a rocket fired at it would, once the script no longer keeps it explosion proof.
+    Action ShootDownScriptHeli(int heliGlobal);
     // Action: gives the player a Kuruma when on foot.
     void GetCar();
     // Action: picks up the friend the mission marks, like Misty: in a car, within 8 m of her, and she gets in by herself.
@@ -136,6 +143,8 @@ namespace Steps {
     void SailToNearestBlip();
     // Action: takes the player's boat onto the nearest floating package, a pickup without a blip that a plane drops (A Drop in the Ocean), else onto the nearest marked place.
     void SailToFloatingPackages();
+    // Action: smashes every object the mission marks within this distance of the player, without an explosion, like the espresso stalls a car is driven into.
+    Action SmashMarkedObjectsNear(float distance);
     // Action: sets off an explosion on every object the mission marks, for what a mission wants smashed (the witness's bodycast).
     void ExplodeMarkedObjects();
     // Action: takes the player out of their car to a spot 8 m beside it.
@@ -152,6 +161,12 @@ namespace Steps {
     Action TourPlaces(std::vector<CVector> places);
     // Action: during a kill frenzy, kills the nearby characters of the models it wants, each one first counted as the player's kill with its weapon.
     void KillFrenzyTargets();
+    // Action: blows up the nearby cars of this model, each counted as blown up by the player, or creates one 25 m off when none is near, for RC Toyz.
+    Action BlowUpCarsOfModel(int model);
+    // Action: kills the nearby characters of these models, each first counted as the player's Uzi kill, for a mission that counts the player's kills by model (GET_NUM_OF_MODELS_KILLED_BY_PLAYER).
+    Action KillModelsNear(std::vector<int> models);
+    // Action: puts the player (and their car) at the nearest marked place in 3D, at its own height, for checkpoint challenges whose places are all marked at once (the Patriot challenges, Multistorey Mayhem).
+    void TouchCoordBlips();
     // Action: teleports to the nearest marked place more than 6 m away; with a race's current and next checkpoint both marked, it alternates and passes each.
     void AlternateCoordBlips();
     // Action: moves the car the script keeps in this global to a place once, like an empty car pushed into the sea.
@@ -160,14 +175,16 @@ namespace Steps {
     Action DestroyMarkedCarsExcept(std::vector<int> carGlobals);
     // Action: seats the player in the car the script keeps in this global first, then does the other action, for a mission that wants that car somewhere.
     Action DriveScriptCar(int carGlobal, Action then);
-    // Action: drives onto the nearest marked pickup until the script counts this many carried (in this global), or none is left, then drives to a drop-off.
-    Action CollectByCarAndDeliver(int carriedGlobal, int batch, CVector dropOff);
+    // Action: drives onto the nearest marked pickup, or any pickup left on a field when none is marked, until the script counts this many carried (in this global), then drives to a drop-off.
+    Action CollectByCarAndDeliver(int carriedGlobal, int batch, CVector dropOff, CVector field);
     // Action: walks onto the pickup the mission marks, which collects it.
     void CollectPickup();
     // Action: kills the driver and passengers of every car the mission marks.
     void KillMarkedCarOccupants();
     // Action: kills the characters the script keeps in these globals, those still alive.
     Action KillScriptChars(std::vector<int> charGlobals);
+    // Action: kills the characters the script keeps in these globals, still alive, as the player's blows with this weapon, for a mission that checks the weapon used.
+    Action KillScriptCharsWith(std::vector<int> charGlobals, eWeaponType weapon);
     // Action: blows up the car the script keeps in this global.
     Action ExplodeScriptCar(int carGlobal);
     // Action: seats the player at the wheel of the car (or boat) the script keeps in this global, from wherever they are.
@@ -196,6 +213,8 @@ namespace Steps {
     Action SetCarHealth(int carGlobal, int health);
     // Action: parks the player's car at a place and heading; once there, leaves it alone so the game can count it in.
     Action ParkAt(CVector place, float heading);
+    // Action: puts the player's car at a start facing this heading and drives it ahead at this speed (m/s) for 1.8 s, again every step until the goal, for a garage whose floor a teleport falls through.
+    Action RollInto(CVector start, float heading, float speed);
     // Action: takes the player out of their car to a place on foot; nothing once on foot.
     Action GetOutTo(CVector place);
 }

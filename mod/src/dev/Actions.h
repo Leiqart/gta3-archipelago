@@ -54,6 +54,10 @@ namespace Actions {
     void SetCarHeading(float degrees);
     // Holds the horn button for one second, through a hook on CPad::GetHorn, the function the car and IS_PLAYER_PRESSING_HORN ask.
     void Honk();
+    // Drives the player's car straight ahead at this speed (m/s) for this long, kept up every frame by UpdatePush as a held accelerator would.
+    void PushCar(float speed, int milliseconds);
+    // Keeps up the push PushCar started; called once per frame.
+    void UpdatePush();
     // Gives the player back control, the normal camera and streaming, as a mission does; used after a mission is forced to pass from its start.
     void GiveControlBack();
     // Changes Claude's outfit as a mission does: UNDRESS_CHAR, LOAD_ALL_MODELS_NOW, DRESS_CHAR; "PLAYER" is his normal one, "PLAYERP" the prison one.
@@ -64,4 +68,6 @@ namespace Actions {
     const char* RunningMission();
     // Reads a global variable of the game's main script; offset is the number after "g" in the decoded script (g980 is 980).
     int ScriptGlobal(int offset);
+    // Writes a global variable of the game's main script, like a mission's countdown.
+    void SetScriptGlobal(int offset, int value);
 }

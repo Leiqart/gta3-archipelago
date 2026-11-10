@@ -258,6 +258,14 @@ namespace {
     // Asuka's marker for her last missions, and Catalina's at the Cochrane Dam for The Exchange.
     const CVector kAsukasLastMarker{367.25f, -328.06f, 19.5f};
     const CVector kExchangeMarker{-362.75f, 246.5f, 60.0f};
+    // The Exchange: Catalina's helicopter, the middles of the two areas that bring out the next gangs (x -1124..-927, y 391..485; x -1221..-1111, y 366..446, z 20..30), and all her men.
+    constexpr int kCatalinasHeliGlobal = 17192;
+    // The small dam (zone WEE_DAM, which the mission waits for between the dam and the first area), where it switches the ped roads off (x -942..-953, y 337..361); untested guess.
+    const CVector kSmallDam{-948.0f, 349.0f, 20.0f};
+    const CVector kCatalinasFirstArea{-1025.0f, 438.0f, 25.0f};
+    const CVector kCatalinasHideout{-1166.0f, 406.0f, 25.0f};
+    const std::vector<int> kCatalinasGang{17056, 17060, 17064, 17068, 17072, 17076, 17080, 17084, 17088, 17092, 17096, 17100, 17104,
+        17108, 17112, 17116, 17120, 17124, 17128, 17132, 17136, 17140, 17144, 17148, 17152, 17156};
 
     // Decoy: the decoy Securicar (g15116) is created when the player comes within 200 m of the warehouse; the mission wants it 160 m away or more after 3 minutes.
     constexpr int kDecoyGlobal = 15116;
@@ -268,17 +276,18 @@ namespace {
     // Bait: a death squad counts as trapped when its car, still whole, comes within 17 x 30 m of this point at Pike Creek.
     const CVector kPikeCreekTrap{-1185.0f, 105.0f, 70.0f};
 
-    // Espresso-2-Go: the district points; a stall gets its blip once the player comes within 150 m of its point (heights unknown: the ground is searched from 22 m).
-    const std::vector<CVector> kEspressoDistricts{
+    // Espresso-2-Go: the 12 stall spots the script sets (g16164..g16256), 9 used; a stall shows up once the player is within 150 m of it or in its district (heights unknown: the ground is searched from 22 m).
+    const std::vector<CVector> kEspressoStalls{
         {1342.0f, -821.0f, 20.0f}, {1024.06f, -465.56f, 20.0f}, {1351.19f, -259.5f, 20.0f}, {286.38f, -667.75f, 20.0f},
         {28.0f, -850.0f, 20.0f}, {14.13f, -1140.0f, 20.0f}, {73.13f, -1359.75f, 20.0f}, {-221.0f, -197.0f, 20.0f},
-        {282.75f, -1492.38f, 20.0f}, {-644.0f, -721.5f, 20.0f}, {-212.0f, 310.0f, 20.0f}};
+        {282.75f, -1492.38f, 20.0f}, {-644.0f, -721.5f, 20.0f}, {-212.0f, 310.0f, 20.0f}, {-1255.0f, -113.0f, 20.0f}};
 
-    // S.A.M.: the boat (g16288), the plane (g16292, created with 1 health on its approach), the flag set once the cargo falls (g16568) and the count collected (g16564).
+    // S.A.M.: the boat (g16288), the flag set once the cargo falls (g16568), the count collected (g16564), a spot 8 m from the runway marker buoy, and the countdown to the plane.
     constexpr int kSamBoatGlobal = 16288;
-    constexpr int kCargoPlaneGlobal = 16292;
     constexpr int kCargoFallenGlobal = 16568;
     constexpr int kCargoCollectedGlobal = 16564;
+    const CVector kBesideRunwayBuoy{-797.0f, -1310.0f, 0.0f};
+    constexpr int kPlaneCountdownGlobal = 16284;
 
     // The four phone contacts: their trigger waits for the player stopped on foot at the ringing phone (LOCATE_STOPPED_PLAYER_ON_FOOT_3D).
     const CVector kMartysPhone{1224.56f, -840.25f, 15.0f};
@@ -290,18 +299,24 @@ namespace {
     const CVector kMartysYard{1205.69f, -789.19f, 14.75f};
     const CVector kMartysBack{1217.0f, -794.0f, 13.88f};
     const CVector kMartysFactory{1195.56f, -805.0f, 13.69f};
+    // The Wife: a spot 5 m west of Mrs. Chonks; Her Lover: a spot 6 m south of Carlos, untested.
+    const CVector kWestOfMrsChonks{1059.0f, -378.0f, 13.875f};
+    const CVector kSouthOfCarlos{897.0f, -482.0f, 14.5f};
     // The Wife: the sea by the docks, where the police boats wait (837, -1115.6 floats at -0.19).
     const CVector kHarbourSea{837.0f, -1130.0f, 1.0f};
 
-    // Turismo: the starting grid; I Scream, You Scream: the box at Atlantic Quays where the van parks, the safe point, the gang members it lures (g9572 to g9584).
+    // Turismo: the starting grid; I Scream, You Scream: the box at Atlantic Quays where the van parks, the gang members it lures (g9572 to g9584).
     const CVector kTurismoGrid{1042.94f, -858.69f, 13.75f};
+    // I Scream, You Scream: the spot of El Burro's bomb in Harwood.
+    const CVector kElBurrosBomb{934.875f, -69.75f, 8.06f};
     constexpr int kIceCreamVanGlobal = 9568;
+    // Uzi Rider: streets of Hepburn Heights toured for Diablos, untested guesses around the mission's blip (940, -220).
+    const std::vector<CVector> kHepburnHeights{{940.0f, -220.0f, 5.0f}, {900.0f, -260.0f, 5.0f}, {980.0f, -180.0f, 5.0f}};
     const CVector kQuaysPark{1213.13f, -1125.97f, 12.2f};
-    const CVector kQuaysSafe{1219.69f, -1137.19f, 12.0f};
     const std::vector<int> kIceCreamGang{9572, 9576, 9580, 9584};
-    // Trial By Fire: the six Triads (g9636 to g9656) in Chinatown; Big'N'Veiny: the van (g9744), the thief (g9712) and the box behind XXX Mags.
-    const CVector kChinatownCentre{936.0f, -846.0f, 14.5f};
-    const std::vector<int> kTrialTriads{9636, 9640, 9644, 9648, 9652, 9656};
+    // Trial By Fire: the flamethrower on Chinatown's edge and the streets toured for Triads; Big'N'Veiny: the van (g9744), the thief (g9712) and the box behind XXX Mags.
+    const CVector kElBurrosFlamethrower{879.19f, -810.0f, 14.5f};
+    const std::vector<CVector> kChinatownStreets{{936.0f, -846.0f, 14.5f}, {885.0f, -850.0f, 14.5f}, {990.0f, -830.0f, 14.5f}, {950.0f, -895.0f, 14.5f}};
     constexpr int kMagsVanGlobal = 9744;
     constexpr int kMagsThiefGlobal = 9712;
     const CVector kXXXMags{973.88f, -428.25f, 15.0f};
@@ -312,19 +327,41 @@ namespace {
     constexpr int kYardiesCarGlobal = 14096;
     const CVector kYardiesPickupCorner{108.0f, -277.0f, 10.0f};
     const CVector kYardiesPickupOppositeCorner{118.0f, -267.0f, 25.0f};
-    // Gangcar Round-Up: mission garage g292 (257..263, -803..-795.5) and the count of cars delivered (g14224); untested spot, facing north, and the player south of it.
+    // Gangcar Round-Up: mission garage g292 (257..263, -803..-795.5) and the count of cars delivered (g14224); a car teleported inside fell through its floor (to -11 m), so it is driven in through the door on its north side (where the mission plays its sound, 260, -790), facing south, once the door is open (a car hitting a wall is damaged, and the garage only takes one in good shape), and the player gets out north of it.
     constexpr int kRoundUpGarageGlobal = 292;
     constexpr int kRoundUpDeliveredGlobal = 14224;
-    const CVector kRoundUpParking{260.0f, -799.25f, 27.5f};
-    const CVector kRoundUpOutside{260.0f, -808.5f, 27.5f};
+    const CVector kRoundUpApproach{260.0f, -788.0f, 27.5f};
+    const CVector kRoundUpOutside{260.0f, -786.0f, 27.5f};
+
+    // Uzi Money: streets of Wichita Gardens around D-Ice's phone, 30 m apart, untested.
+    const std::vector<CVector> kWichitaGardens{{-442.0f, -7.0f, 4.0f}, {-412.0f, -7.0f, 4.0f}, {-442.0f, 23.0f, 4.0f}, {-472.0f, -7.0f, 4.0f}, {-442.0f, -37.0f, 4.0f}};
+
+    // RC Toyz: the Toyz van and the four markers (LOCATE_PLAYER_ANY_MEANS_3D 5 m), Diablo Destruction and Mafia Massacre in Portland, Rumpo Rampage in Shoreside Vale, Casino Calamity in Staunton.
+    constexpr int kToyzVan = 149;
+    const CVector kDiabloDestructionStart{1014.0f, -120.0f, 5.0f};
+    const CVector kMafiaMassacreStart{1158.0f, -309.0f, 23.0f};
+    const CVector kRumpoRampageStart{-636.0f, 65.0f, 19.0f};
+    const CVector kCasinoCalamityStart{366.0f, -1312.0f, 26.0f};
+
+    // The Patriot challenges and Multistorey Mayhem: the middles of the areas their vehicles must be got into (untested heights: the ground is searched).
+    const CVector kPatriotPlaygroundStart{1305.0f, -647.0f, 15.0f};
+    const CVector kRideInTheParkStart{63.0f, -590.0f, 26.0f};
+    const CVector kGrippedStart{-220.0f, 265.0f, 30.0f};
+    const CVector kMultistoreyStart{252.0f, -540.0f, 26.0f};
 
     // D-Ice: the toy van (g16664), D-Ice's rigged car (g16752) and his St Mark's garage (g356, 1346.88..1352.5, -315.5..-310.69), the bullion carried (g16828) and the drop-off garage (g360), his brother (g16976).
     constexpr int kToyVanGlobal = 16664;
+    // Rigged To Blow: where D-Ice's car waits and must be brought back (LOCATE_STOPPED_CAR_3D 3 x 4 m).
+    const CVector kDIcesCarSpot{-682.0f, 76.0f, 17.375f};
     constexpr int kRiggedCarGlobal = 16752;
     const CVector kStMarksGarageParking{1349.69f, -313.1f, 50.5f};
     constexpr int kBullionCarriedGlobal = 16828;
     const CVector kBullionGarage{-834.1f, -168.6f, 34.0f};
+    // Bullion Run: the airport strip where the platinum lies, as pickups without blips (30 to collect).
+    const CVector kBullionField{-1080.0f, -163.19f, 12.0f};
     constexpr int kDIcesBrotherGlobal = 16976;
+    // Rumble: the nine Red Jacks given bats (g16860 to g16892).
+    const std::vector<int> kRumbleGang{16860, 16864, 16868, 16872, 16876, 16880, 16884, 16888, 16892};
 }
 
 const std::vector<Sheets::Sheet>& Sheets::Run() {
@@ -629,19 +666,26 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
             {"lure the three death squads into the Yakuza trap", UntilMissionEnds, LureMarkedCarsTo(kPikeCreekTrap), 300},
         }},
         {.script = "asusb2", .passedFlag = 1420, .start = kAsukasLastMarker, .steps = {
-            {"smash the nine espresso stalls", UntilMissionEnds, Both(ExplodeMarkedObjects, TourPlaces(kEspressoDistricts)), 600},
+            // A stall only shows up once the player is within 150 m of it (or in its district), and its guard opens fire once it is hit: at each stop, smash the stall that showed up, then go on.
+            {"smash the nine espresso stalls", UntilMissionEnds, Both(KeepAlive, Both(SmashMarkedObjectsNear(150.0f), TourPlaces(kEspressoStalls))), 600},
         }},
-        // Read only in part after the cargo is collected: the radar is followed to stash it.
         {.script = "asusb3", .passedFlag = 1424, .start = kAsukasLastMarker, .steps = {
             {"take the boat", InScriptCar(kSamBoatGlobal), BoardScriptCar(kSamBoatGlobal)},
-            {"sail to the runway marker buoy and wait for the plane", CarHealthAtMost(kCargoPlaneGlobal, 10), SailToNearestBlip, 240},
-            {"shoot the plane down", GlobalAtLeast(kCargoFallenGlobal, 1), ExplodeScriptCar(kCargoPlaneGlobal), 60},
+            // The buoy is a solid object (-805, -1310): a boat dropped on it throws the player out, and the mission only wants it within 15 m.
+            // The plane is the game's drug-run Cessna, which only sets off once the 3:30 countdown (g16284) falls under 1:31: it is moved on to 1:32, and the plane shot down near the buoy, so its cargo falls in the bay.
+            {"wait by the runway marker buoy and shoot the plane down", GlobalAtLeast(kCargoFallenGlobal, 1), Both(SailTo(kBesideRunwayBuoy, {}), Both(ShortenTimer(kPlaneCountdownGlobal, 92000), ShootDownDrugPlane(kBesideRunwayBuoy, 150.0f))), 240},
             {"collect the eight cargo packages", GlobalAtLeast(kCargoCollectedGlobal, 8), SailToNearestBlip, 240},
-            {"stash the cargo", UntilMissionEnds, FollowRadar, 120},
+            // On foot in the Panlantic lift, under its low roof (LOCATE_PLAYER_ON_FOOT_3D 366.94, -328, 18.5).
+            {"stash the cargo in the lift", UntilMissionEnds, StandAt(kPanlanticLift), 60},
         }},
-        // Read only in part: the radar is followed, sparing Maria, who is marked too.
+        // The Exchange: once the ransom is paid the player is left unarmed among Catalina's men, healed here as her men are killed (Maria and Catalina spared).
+        // Her helicopter (g17192) only sets off once the player leaves the dam; each area reached then creates the next gang, the last one Maria and Catalina, who takes off.
         {.script = "cat1", .passedFlag = 1472, .start = kExchangeMarker, .steps = {
-            {"rescue Maria and take Catalina down", UntilMissionEnds, FollowRadarSparing({kMariaGlobal}), 600},
+            {"get out of the dam to the small dam (zone WEE_DAM)", AllOf(Marked(BLIP_CAR), PlayerNear(kSmallDam, 5.0f)), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kSmallDam))), 60},
+            {"follow the helicopter to the first gang's area", PlayerNear(kCatalinasFirstArea, 5.0f), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kCatalinasFirstArea))), 60},
+            {"follow the helicopter to Catalina's hideout", PlayerNear(kCatalinasHideout, 5.0f), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kCatalinasHideout))), 60},
+            {"shoot Catalina's helicopter down as it takes off", Marked(BLIP_CHAR), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), ShootDownScriptHeli(kCatalinasHeliGlobal))), 120},
+            {"rescue Maria", UntilMissionEnds, Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoBesideScriptChar(kMariaGlobal, 3.0f))), 120},
         }},
         // The phone contacts, all open by the end of the story. Marty Chonks only calls between 9:00 and 18:59.
         {.script = "meat1", .passedFlag = 1156, .start = kMartysPhone, .beforeStart = SetClock(12), .steps = {
@@ -653,13 +697,16 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         }},
         {.script = "meat2", .passedFlag = 1160, .start = kMartysPhone, .beforeStart = SetClock(12), .steps = {
             {"get in Marty's car", InScriptCar(5988), EnterScriptCar(5988)},
+            // The yard (1205.69, -789.19) lies within 20 m of the factory's door: the steps wait for the radar to empty, then for the next place blip, instead.
             {"pick up the two thieves", BlipNear(kMartysYard), PickUpNearestFriend, 90},
-            {"drive them to Marty's", BlipNear(kMartysFactory), StopAt(kMartysYard), 120},
-            {"bring the car back to the factory", UntilMissionEnds, DriveScriptCar(5988, StopAt(kMartysFactory)), 60},
+            {"drive them to Marty's yard, where they get out", NoBlip, StopAt(kMartysYard), 120},
+            {"respray the car at the Pay 'n' Spray", Marked(BLIP_COORD), StopAt(kPayNSpray), 60},
+            {"bring the car back to the factory and get out", UntilMissionEnds, Either(PlayerNear(kMartysFactory, 3.0f), GetOutAside, StopAt(kMartysFactory)), 60},
         }},
         {.script = "meat3", .passedFlag = 1164, .start = kMartysPhone, .beforeStart = SetClock(12), .steps = {
             {"get in Marty's car", InScriptCar(6068), EnterScriptCar(6068)},
-            {"pick up Marty's wife", BlipNear(kMartysYard), PickUpNearestFriend, 60},
+            // East of her (1064, -378) the car fell through to -16 m (a subway entrance, it seems): stop west of her, within the 8 m she gets in from.
+            {"pick up Marty's wife", BlipNear(kMartysYard), StopAt(kWestOfMrsChonks), 60},
             {"drive her to Marty's", Not(BlipNear(kMartysYard)), StopAt(kMartysYard), 120},
             {"take the car to the docks", AllOf(InScriptCar(6068), PlayerNear(kDocks, 3.0f)), DriveScriptCar(6068, GoTo(kDocks)), 60},
             {"get out on the quay", OnFoot, GetOutTo(kDocks)},
@@ -667,48 +714,64 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         }},
         {.script = "meat4", .passedFlag = 1168, .start = kMartysPhone, .beforeStart = SetClock(12), .steps = {
             {"get in Marty's car", InScriptCar(6096), EnterScriptCar(6096)},
-            {"pick up Carlos", BlipNear(kMartysBack), PickUpNearestFriend, 60},
+            // East of him (897, -476) the car spun and blew up: stop south of him, where he faces, within the 8 m he gets in from.
+            {"pick up Carlos", BlipNear(kMartysBack), StopAt(kSouthOfCarlos), 60},
             {"drive him to Marty's back yard", UntilMissionEnds, StopAt(kMartysBack), 120},
         }},
-        {.script = "diablo1", .passedFlag = 1112, .start = kElBurrosPhone, .steps = {
+        // Turismo can be raced again: Big'N'Veiny's passed routine clears g1112, so the run reads g1200, set by the first win and never cleared.
+        {.script = "diablo1", .passedFlag = 1200, .start = kElBurrosPhone, .steps = {
             {"get a fast car", InCar, GetCar},
             {"line up on the starting grid", Marked(BLIP_CAR), StopAt(kTurismoGrid), 60},
             {"race through the checkpoints", UntilMissionEnds, AlternateCoordBlips, 300},
         }},
         {.script = "diablo2", .passedFlag = 1116, .start = kElBurrosPhone, .steps = {
-            {"pick up El Burro's bomb", Not(Marked(BLIP_OBJECT)), CollectPickup, 60},
+            // A pickup far away has no object yet, so no blip either: walk to the bomb's spot in Harwood; the van is created (and marked) once it is collected.
+            {"pick up El Burro's bomb", Marked(BLIP_CAR), WalkTo(kElBurrosBomb), 60},
             {"hijack the ice cream van", InModel(113), EnterBlipCar, 60},
-            {"park at Atlantic Quays and play the jingle", AnyCharNear(kIceCreamGang, kIceCreamVanGlobal, 15.0f), Both(StopAt(kQuaysPark), Honk), 120},
-            {"get out of the way", OnFoot, GetOutTo(kQuaysSafe)},
-            {"blow the van up", UntilMissionEnds, ExplodeScriptCar(kIceCreamVanGlobal), 60},
+            // The jingle brings the four gang members out (created 20 m from the van), and the mission passes once all four are dead, however they die.
+            // The van rolls once parked: it is parked once, and the gang killed as soon as it shows up, the player healed, rather than re-parked under fire.
+            {"park at Atlantic Quays and play the jingle", AnyCharNear(kIceCreamGang, kIceCreamVanGlobal, 50.0f), Both(ParkAt(kQuaysPark, 0.0f), Honk), 120},
+            {"kill the lured gang", UntilMissionEnds, Both(KeepAlive, KillScriptChars(kIceCreamGang)), 60},
         }},
         {.script = "diablo3", .passedFlag = 1120, .start = kElBurrosPhone, .steps = {
-            {"torch the Triads in Chinatown", UntilMissionEnds, Both(GoTo(kChinatownCentre), KillScriptChars(kTrialTriads)), 120},
+            // The flamethrower hidden on Chinatown's edge starts a kill frenzy: 25 Triads (models 12 and 13) in 151 s, passed when the frenzy is; Chinatown's own Triads count with the six it creates.
+            {"pick up El Burro's flamethrower", Frenzy, WalkTo(kElBurrosFlamethrower), 60},
+            {"torch 25 Triads around Chinatown", UntilMissionEnds, Both(KeepAlive, Both(KillFrenzyTargets, TourPlaces(kChinatownStreets))), 180},
         }},
         {.script = "diablo4", .passedFlag = 1124, .start = kElBurrosPhone, .steps = {
             {"take the van", InScriptCar(kMagsVanGlobal), EnterScriptCar(kMagsVanGlobal)},
             {"follow the trail and waste the thief", BlipNear(kXXXMags), KillScriptChars({kMagsThiefGlobal}), 120},
             {"deliver the magazines behind XXX Mags", UntilMissionEnds, DriveScriptCar(kMagsVanGlobal, StopAt(kXXXMagsStop)), 60},
         }},
-        {.script = "yard1", .passedFlag = 1356, .start = kCourtneysPhone, .steps = {
+        // Bling-Bling Scramble can be raced again: Kingdom Come's passed routine clears g1356 and sets g1368, read too.
+        {.script = "yard1", .passedFlag = 1356, .laterPassedFlag = 1368, .start = kCourtneysPhone, .steps = {
             {"get a car", InCar, GetCar},
             {"wait on the waste ground opposite the stadium", Marked(BLIP_CAR), StopAt(kWasteGround), 60},
-            {"race to the checkpoints", UntilMissionEnds, AlternateCoordBlips, 300},
+            // A scramble of 15 checkpoints, each won by the first car on it, passed with strictly more than each rival: their drivers are killed (no explosion beside the player's car).
+            {"race to the checkpoints", UntilMissionEnds, Both(KillMarkedCarOccupants, AlternateCoordBlips), 300},
         }},
         {.script = "yard2", .passedFlag = 1360, .start = kCourtneysPhone, .steps = {
             {"wait for the Yardies' car", CarStoppedIn(kYardiesCarGlobal, kYardiesPickupCorner, kYardiesPickupOppositeCorner), JustWait, 60},
             {"take the wheel", InScriptCar(kYardiesCarGlobal), EnterScriptCar(kYardiesCarGlobal)},
-            {"drive-by the Diablos in Hepburn Heights", UntilMissionEnds, Both(KillFrenzyTargets, FollowRadarSparing({14100, 14104})), 300},
+            // In Hepburn Heights (zone TOWERS) the mission counts the player's kills of Diablo models 14 and 15 (10 needed), then wants the car back on Yardie turf.
+            // The radar marks Hepburn Heights a moment after, clears it on arrival, then marks the Yardies' turf once the 10 Diablos are dead.
+            {"wait for Hepburn Heights to be marked", Marked(BLIP_COORD), JustWait},
+            {"drive to Hepburn Heights, whose blip goes once there", NoBlip, GoTo(kHepburnHeights[0]), 60},
+            {"drive-by 10 Diablos in Hepburn Heights", Marked(BLIP_COORD), Both(KeepAlive, Both(KillModelsNear({14, 15}), TourPlaces(kHepburnHeights))), 180},
+            {"take the Yardies back to their turf", UntilMissionEnds, FollowRadarSparing({14100, 14104}), 120},
         }},
         {.script = "yard3", .passedFlag = 1364, .start = kCourtneysPhone, .steps = {
             {"boost a Diablo Stallion", InModel(137), GetCarOf(137)},
-            {"park it in the Newport garage", CarInGarage(kRoundUpGarageGlobal), ParkAt(kRoundUpParking, 0.0f)},
+            {"wait at the Newport garage's door until it opens", GarageOpen(kRoundUpGarageGlobal), ParkAt(kRoundUpApproach, 180.0f), 30},
+            {"drive it into the garage", CarInGarage(kRoundUpGarageGlobal), RollInto(kRoundUpApproach, 180.0f, 6.0f)},
             {"get out of the garage", GlobalAtLeast(kRoundUpDeliveredGlobal, 1), GetOutTo(kRoundUpOutside)},
             {"boost a Mafia Sentinel", InModel(134), GetCarOf(134)},
-            {"park it in the Newport garage", CarInGarage(kRoundUpGarageGlobal), ParkAt(kRoundUpParking, 0.0f)},
+            {"wait at the Newport garage's door until it opens", GarageOpen(kRoundUpGarageGlobal), ParkAt(kRoundUpApproach, 180.0f), 30},
+            {"drive it into the garage", CarInGarage(kRoundUpGarageGlobal), RollInto(kRoundUpApproach, 180.0f, 6.0f)},
             {"get out of the garage", GlobalAtLeast(kRoundUpDeliveredGlobal, 2), GetOutTo(kRoundUpOutside)},
             {"boost a Yakuza Stinger", InModel(136), GetCarOf(136)},
-            {"park it in the Newport garage", CarInGarage(kRoundUpGarageGlobal), ParkAt(kRoundUpParking, 0.0f)},
+            {"wait at the Newport garage's door until it opens", GarageOpen(kRoundUpGarageGlobal), ParkAt(kRoundUpApproach, 180.0f), 30},
+            {"drive it into the garage", CarInGarage(kRoundUpGarageGlobal), RollInto(kRoundUpApproach, 180.0f, 6.0f)},
             {"get out of the garage", UntilMissionEnds, GetOutTo(kRoundUpOutside), 60},
         }},
         // Read only in part: Catalina's letter turns the stash run into a fight; the radar is followed.
@@ -718,8 +781,9 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         // Uzi Money is a kill frenzy: only kills the game credits to the player's drive-by count.
         {.script = "hood1", .passedFlag = 1436, .start = kDIcesPhone, .steps = {
             {"get a car", InCar, GetCar},
-            {"drive to Wichita Gardens", Frenzy, GoToBlip, 60},
-            {"drive-by the Nines", UntilMissionEnds, KillFrenzyTargets, 160},
+            // A drive-by frenzy, 20 Nines (model 23) in 150 s, in zone PROJECT around D-Ice's phone: the streets nearby are toured for more of them.
+            {"wait for the frenzy", Frenzy, JustWait},
+            {"drive-by 20 Nines around Wichita Gardens", UntilMissionEnds, Both(KeepAlive, Both(KillFrenzyTargets, TourPlaces(kWichitaGardens))), 160},
         }},
         {.script = "hood2", .passedFlag = 1440, .start = kDIcesPhone, .steps = {
             {"take the toy van", InScriptCar(kToyVanGlobal), EnterScriptCar(kToyVanGlobal)},
@@ -728,13 +792,42 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         // The St Mark's garage keeps the car (type 14): parked whole and still inside, it closes with the player in it.
         {.script = "hood3", .passedFlag = 1444, .start = kDIcesPhone, .steps = {
             {"take D-Ice's rigged car", InScriptCar(kRiggedCarGlobal), EnterScriptCar(kRiggedCarGlobal)},
-            {"park it in the St Mark's garage", UntilMissionEnds, ParkAt(kStMarksGarageParking, 0.0f), 120},
+            // The garage defuses the bomb (IS_CAR_IN_MISSION_GARAGE), then the car must go back undamaged, stopped where D-Ice left it.
+            {"park it in the St Mark's garage", BlipNear(kDIcesCarSpot), ParkAt(kStMarksGarageParking, 0.0f), 120},
+            {"take it back to D-Ice, undamaged, and get out", UntilMissionEnds, Either(PlayerNear(kDIcesCarSpot, 2.0f), GetOutAside, StopAt(kDIcesCarSpot)), 60},
         }},
         {.script = "hood4", .passedFlag = 1448, .start = kDIcesPhone, .steps = {
-            {"collect the bullion and drop it off at the garage", UntilMissionEnds, CollectByCarAndDeliver(kBullionCarriedGlobal, 6, kBullionGarage), 600},
+            {"collect the bullion and drop it off at the garage", UntilMissionEnds, CollectByCarAndDeliver(kBullionCarriedGlobal, 6, kBullionGarage, kBullionField), 600},
         }},
         {.script = "hood5", .passedFlag = 1452, .start = kDIcesPhone, .steps = {
-            {"meet D-Ice's brother and win the rumble", UntilMissionEnds, FollowRadarSparing({kDIcesBrotherGlobal}), 300},
+            // Bats only: a gang member dying from any other weapon fails the mission; the player stays by D-Ice's brother, who leads to the fight.
+            {"meet D-Ice's brother and win the rumble with a bat", UntilMissionEnds, Both(KeepAlive, Both(KillScriptCharsWith(kRumbleGang, WEAPONTYPE_BASEBALLBAT), GoBesideScriptChar(kDIcesBrotherGlobal, 3.0f))), 300},
+        }},
+        // RC Toyz: in the Toyz van (149) on a marker, 2 minutes to blow up a gang's cars with the RC buggy; passed with a new record (any car beats the first).
+        {.script = "rc1", .passedFlag = 1636, .start = kDiabloDestructionStart, .startModel = kToyzVan, .steps = {
+            {"blow up Diablo cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(137), 180},
+        }},
+        {.script = "rc2", .passedFlag = 1640, .start = kMafiaMassacreStart, .startModel = kToyzVan, .steps = {
+            {"blow up Mafia cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(134), 180},
+        }},
+        {.script = "rc3", .passedFlag = 1644, .start = kRumpoRampageStart, .startModel = kToyzVan, .steps = {
+            {"blow up Hood cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(139), 180},
+        }},
+        {.script = "rc4", .passedFlag = 1648, .start = kCasinoCalamityStart, .startModel = kToyzVan, .steps = {
+            {"blow up Yakuza cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(136), 180},
+        }},
+        // Off-road and car park challenges: got into a car of the model in the start area, every checkpoint is marked at once, each touched in the car (LOCATE_PLAYER_IN_CAR_3D, 2 to 2.5 m).
+        {.script = "t4x4_1", .passedFlag = 1512, .start = kPatriotPlaygroundStart, .startModel = 96, .steps = {
+            {"touch every checkpoint of Patriot Playground", UntilMissionEnds, TouchCoordBlips, 300},
+        }},
+        {.script = "t4x4_2", .passedFlag = 1516, .start = kRideInTheParkStart, .startModel = 90, .steps = {
+            {"touch every checkpoint of A Ride in the Park", UntilMissionEnds, TouchCoordBlips, 300},
+        }},
+        {.script = "t4x4_3", .passedFlag = 1520, .start = kGrippedStart, .startModel = 96, .steps = {
+            {"touch every checkpoint of Gripped!", UntilMissionEnds, TouchCoordBlips, 300},
+        }},
+        {.script = "mayhem", .passedFlag = 1524, .start = kMultistoreyStart, .startModel = 129, .steps = {
+            {"touch every checkpoint of Multistorey Mayhem", UntilMissionEnds, TouchCoordBlips, 300},
         }},
     };
     return run;

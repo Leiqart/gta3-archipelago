@@ -13,8 +13,12 @@ namespace Sheets {
         const char* script;
         // The script global the game sets to 1 once the mission is passed (g980 is 980).
         int passedFlag;
+        // For a race a later mission makes replayable by clearing passedFlag: the flag that later mission sets instead, read too; 0 when none.
+        int laterPassedFlag = 0;
         // The marker the player walks into on foot to start it; none for Give Me Liberty, which the game starts by itself after the intro.
         std::optional<CVector> start;
+        // The model of the vehicle the player must sit in at the start, for a side mission like RC Toyz (the Toyz van, 149); 0 to walk in on foot.
+        int startModel = 0;
         // Done before walking into the marker, like setting the clock for a mission that only starts at some hours; empty when nothing.
         Steps::Action beforeStart;
         // What the mission changes for good, replayed when the run skips it because later missions rely on it; nullptr when nothing.

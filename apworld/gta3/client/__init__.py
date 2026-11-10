@@ -7,14 +7,14 @@ from .mod_link import ModLink
 
 
 class GTA3Context(CommonContext):
-    """Joins the Archipelago room as a GTA III slot, relays the room state to the mod and the mod's checks to the room."""
+    """Joins the Archipelago room as a GTA III slot, relays the room state and our items to the mod, and the mod's checks to the room."""
     game = "Grand Theft Auto III"
     # Receive every item: from other games (0b001), from our own game (0b010) and the starting inventory (0b100).
     items_handling = 0b111
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
-        self.mod = ModLink(on_check=self.on_mod_check)
+        self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_items_to_mod)
 
     # Called by ModLink for each "check <id>" line: sends that location to the room, which ignores ids it already has.
     async def on_mod_check(self, location_id: int) -> None:
@@ -22,6 +22,11 @@ class GTA3Context(CommonContext):
             logger.info(f"Check {location_id} not sent: not connected to the room")
         elif not await self.check_locations([location_id]):
             logger.info(f"Check {location_id} not sent: already checked or unknown location")
+
+    # Relays to the mod the items our slot has received, from this position in the list to its end, each with its name.
+    def send_items_to_mod(self, start: int = 0) -> None:
+        for index, item in enumerate(self.items_received[start:], start):
+            self.mod.send_item(index, item.item, self.item_names.lookup_in_slot(item.item))
 
     # Gives the client window its own title.
     def make_gui(self):
@@ -36,11 +41,13 @@ class GTA3Context(CommonContext):
         await self.get_username()
         await self.send_connect()
 
-    # Reacts to the room's messages; "Connected" means our slot is ready.
+    # Reacts to the room's messages: "Connected" means our slot is ready, "ReceivedItems" brings items from this index on (0 resends them all).
     def on_package(self, cmd: str, args: dict) -> None:
         super().on_package(cmd, args)
         if cmd == "Connected":
             self.mod.set_room_connected(True)
+        elif cmd == "ReceivedItems":
+            self.send_items_to_mod(args["index"])
 
     # Runs whenever the link to the room is lost, whatever the reason.
     async def connection_closed(self) -> None:

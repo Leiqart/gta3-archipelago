@@ -1,14 +1,10 @@
 #include <algorithm>
 #include <array>
-#include <cstring>
 #include <string>
 #include <vector>
 #include "plugin.h"
-#include "CMessages.h"
-#include "CPad.h"
 #include "CRadar.h"
 #include "CRunningScript.h"
-#include "CText.h"
 #include "CTheScripts.h"
 #include "CTimer.h"
 #include "Log.h"
@@ -21,12 +17,11 @@ namespace {
     constexpr char kPrintBig[] = "\xBA\x00";
     constexpr char kLaunchMission[] = "\x17\x04\x04";
 
-    // A mission's trigger: the script waiting for the player on its marker, from its first byte to the next script's, with where its title's text key and its mission number are.
+    // A mission's trigger: the script waiting for the player on its marker, from its first byte to the next script's, with where its title's text key is.
     struct Trigger {
         std::size_t start = 0;
         std::size_t end = 0;
         std::size_t titleAt = 0;
-        std::size_t numberAt = 0;
     };
 
     // A mission started from a contact's marker or phone: its number in main.scm, the contact's radar sprite (none for Marty's phone, which has no blip), and its state.
@@ -105,10 +100,6 @@ namespace {
         {78, RADAR_SPRITE_ICE},    // Rumble
     };
 
-    // Test: the marker of the first mission launches the second, under its title (20 and 50: Luigi's marker starts Grand Theft Auto); 0 turns it off.
-    constexpr unsigned char kTestMarker = 0;
-    constexpr unsigned char kTestLaunched = 50;
-
     // The mission of the table with this number; nullptr if it is not in it.
     Mission* Find(unsigned char number) {
         for (Mission& mission : g_missions) {
@@ -138,7 +129,6 @@ namespace {
         Trigger trigger;
         trigger.start = *(next - 1);
         trigger.end = next != starts.end() ? *next : MainScript::MainSize();
-        trigger.numberAt = at + 3;
         // Its title is the last PRINT_BIG before the launch, an 8-byte text key the game looks up in the player's language.
         for (std::size_t title = scm.find(kPrintBig, trigger.start, 2); title < at; title = scm.find(kPrintBig, title + 1, 2)) {
             if (MainScript::IsKeyAt(scm, title + 2)) trigger.titleAt = title + 2;
@@ -172,16 +162,6 @@ namespace {
         return mission.trigger.titleAt ? std::string(MainScript::Bytes().c_str() + mission.trigger.titleAt) : std::string();
     }
 
-    // Test: makes the test marker's trigger launch the other mission under its title, by copying its number and its title's key; done again whenever a new game reloads main.scm.
-    void RedirectTestMarker() {
-        const Mission* marker = Find(kTestMarker);
-        const Mission* launched = Find(kTestLaunched);
-        if (!marker || !launched || !marker->trigger.numberAt || CTheScripts::ScriptSpace[marker->trigger.numberAt] == kTestLaunched) return;
-        CTheScripts::ScriptSpace[marker->trigger.numberAt] = kTestLaunched;
-        if (marker->trigger.titleAt && launched->trigger.titleAt) std::memcpy(CTheScripts::ScriptSpace + marker->trigger.titleAt, MainScript::Bytes().data() + launched->trigger.titleAt, 8);
-        Log::Write("Markers: test, the marker of mission " + std::to_string(kTestMarker) + " launches mission " + std::to_string(kTestLaunched) + " under its title " + TitleKey(*launched));
-    }
-
     // A locked mission's trigger is kept asleep, so it never checks whether the player stands on its marker; returns the contacts with an unlocked mission waiting on their marker.
     std::array<bool, RADAR_SPRITE_COUNT> FollowTriggers() {
         std::array<bool, RADAR_SPRITE_COUNT> waiting{};
@@ -204,28 +184,6 @@ namespace {
         }
     }
 
-    // The mission a mission's marker launches: the other one for the test marker, else itself.
-    const Mission& LaunchedBy(const Mission& mission) {
-        const Mission* launched = mission.number == kTestMarker ? Find(kTestLaunched) : nullptr;
-        return launched ? *launched : mission;
-    }
-
-    // Test: F10 unlocks the next locked mission of the table, shows the title of what its marker launches in the player's language, and writes whether its trigger runs and the title key its trigger holds in memory.
-    void UnlockNextOnF10() {
-        if (!CPad::NewKeyState.FKeys[9] || CPad::OldKeyState.FKeys[9]) return;
-        for (Mission& mission : g_missions) {
-            if (mission.unlocked) continue;
-            mission.unlocked = true;
-            bool running = false;
-            for (CRunningScript* script = CTheScripts::pActiveScripts; script; script = script->m_pNext) running = running || MissionOf(*script) == &mission;
-            const std::string inMemory = mission.trigger.titleAt ? reinterpret_cast<const char*>(CTheScripts::ScriptSpace + mission.trigger.titleAt) : "";
-            Log::Write("Markers: unlocked mission " + std::to_string(mission.number) + ", its marker launches mission " + std::to_string(LaunchedBy(mission).number) + ", its trigger is " + (running ? "running" : "not running") + " and prints the title " + inMemory);
-            const std::string key = TitleKey(LaunchedBy(mission));
-            if (!key.empty()) CMessages::AddMessageJumpQ(TheText.Get(key.c_str()), 2000, 0);
-            return;
-        }
-    }
-
     // Runs once per frame: finds the triggers on the first one, then follows the unlocks.
     void Process() {
         static bool triggersFound = false;
@@ -233,12 +191,20 @@ namespace {
             FindTriggers();
             triggersFound = true;
         }
-        RedirectTestMarker();
-        UnlockNextOnF10();
         ShowWaitingContacts(FollowTriggers());
     }
 }
 
 void Markers::Install() {
     plugin::Events::gameProcessEvent += Process;
+}
+
+void Markers::Unlock(unsigned char number) {
+    Mission* mission = Find(number);
+    if (!mission) {
+        Log::Write("Markers: mission " + std::to_string(number) + " is not in the table, nothing to unlock");
+        return;
+    }
+    mission->unlocked = true;
+    Log::Write("Markers: unlocked mission " + std::to_string(number) + " (" + TitleKey(*mission) + ")");
 }

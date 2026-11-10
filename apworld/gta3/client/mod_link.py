@@ -11,9 +11,11 @@ PORT = 2727
 class ModLink:
     """Local server that GTA III's mod connects to; every message is one text line (see docs/protocol.md)."""
 
-    def __init__(self, on_check: Callable[[int], Awaitable[None]]) -> None:
+    def __init__(self, on_check: Callable[[int], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
         # Called with the location id each time the mod sends "check <id>"; ModLink does not know what it does.
         self.on_check = on_check
+        # Called each time the mod connects, right after the room state, so the context sends it every item received so far.
+        self.on_mod_connected = on_mod_connected
         self.room_connected = False
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.Server | None = None
@@ -41,6 +43,7 @@ class ModLink:
         self.writer = writer
         logger.info("GTA III connected")
         self.send_status()
+        self.on_mod_connected()
         try:
             while line := await reader.readline():
                 await self.handle_line(line.decode("utf-8", errors="replace").strip())
@@ -68,6 +71,10 @@ class ModLink:
     # Sends the current room state to the mod.
     def send_status(self) -> None:
         self.send("status connected" if self.room_connected else "status disconnected")
+
+    # Sends one received item to the mod: its position in our slot's list, its id and its name.
+    def send_item(self, index: int, item_id: int, name: str) -> None:
+        self.send(f"item {index} {item_id} {name}")
 
     # Sends one line to the mod, if it is connected.
     def send(self, message: str) -> None:

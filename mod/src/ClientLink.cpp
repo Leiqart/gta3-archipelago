@@ -1,7 +1,10 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <atomic>
+#include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 #include "ClientLink.h"
 #include "Log.h"
 
@@ -14,6 +17,9 @@ namespace {
     std::atomic<bool> g_connected{false};
     // The open connection to the client, so the game thread can send on it; INVALID_SOCKET while there is none.
     std::atomic<SOCKET> g_socket{INVALID_SOCKET};
+    // The lines the network thread received for the game thread, which takes them each frame.
+    std::mutex g_linesMutex;
+    std::vector<std::string> g_lines;
 
     // Records the room state, and logs it only when it changes.
     void SetConnected(bool connected) {
@@ -22,11 +28,14 @@ namespace {
         Log::Write(connected ? "Room connected: the button shows Run Archipelago" : "Room disconnected: the button shows Not connected");
     }
 
-    // Applies one line received from the client.
+    // Applies one line received from the client: the status here, any other line is left for the game thread.
     void HandleLine(const std::string& line) {
         if (line == "status connected") SetConnected(true);
         else if (line == "status disconnected") SetConnected(false);
-        else Log::Write("Unknown message from the client: " + line);
+        else {
+            const std::lock_guard<std::mutex> lock(g_linesMutex);
+            g_lines.push_back(line);
+        }
     }
 
     // Opens a TCP connection to the GTA3 Client; returns INVALID_SOCKET when the client is not running.
@@ -101,4 +110,9 @@ bool ClientLink::Send(const std::string& message) {
     if (sock == INVALID_SOCKET) return false;
     const std::string line = message + "\n";
     return send(sock, line.data(), static_cast<int>(line.size()), 0) == static_cast<int>(line.size());
+}
+
+std::vector<std::string> ClientLink::TakeLines() {
+    const std::lock_guard<std::mutex> lock(g_linesMutex);
+    return std::exchange(g_lines, {});
 }

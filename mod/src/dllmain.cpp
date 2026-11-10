@@ -3,6 +3,7 @@
 #include "MinHook.h"
 #include "Checks.h"
 #include "ClientLink.h"
+#include "Items.h"
 #include "Log.h"
 #include "Markers.h"
 #include "Menu.h"
@@ -42,6 +43,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         Missions::Install();
         Checks::Install();
         Markers::Install();
+        Items::Install();
 #ifdef GTA3AP_DEV
         Cheats::Install(folder);
 #endif

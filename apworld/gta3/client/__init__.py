@@ -3,7 +3,14 @@ import asyncio
 import Utils
 from CommonClient import CommonContext, get_base_parser, gui_enabled, handle_url_arg, logger, server_loop
 
+from ..missions import ALL_MISSIONS, CONTACTS, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions
 from .mod_link import ModLink
+
+# The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
+LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
+# What each unlock and progressive item unlocks: a mission's number in the game, which the mod's markers know.
+MISSION_OF_UNLOCK = {mission.unlock_id: mission.number for mission in MISSIONS if mission.unlock_id}
+CHAIN_OF_PROGRESSIVE = {contact.progressive_id: [mission.number for mission in contact_missions(contact.name)] for contact in CONTACTS}
 
 
 class GTA3Context(CommonContext):
@@ -16,17 +23,35 @@ class GTA3Context(CommonContext):
         super().__init__(server_address, password)
         self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_items_to_mod)
 
-    # Called by ModLink for each "check <id>" line: sends that location to the room, which ignores ids it already has.
-    async def on_mod_check(self, location_id: int) -> None:
-        if not self.mod.room_connected:
-            logger.info(f"Check {location_id} not sent: not connected to the room")
+    # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has.
+    async def on_mod_check(self, key: str) -> None:
+        location_id = LOCATION_OF_KEY.get(key)
+        if location_id is None:
+            logger.info(f"Mission {key} passed, it is not a location")
+        elif not self.mod.room_connected:
+            logger.info(f"Check {key} not sent: not connected to the room")
         elif not await self.check_locations([location_id]):
-            logger.info(f"Check {location_id} not sent: already checked or unknown location")
+            logger.info(f"Check {key} not sent: already checked or unknown location")
 
-    # Relays to the mod the items our slot has received, from this position in the list to its end, each with its name.
+    # What an item does in the game, as the mod applies it: ("unlock", mission number), ("money", amount), or ("none", 0).
+    # A progressive item unlocks its contact's next mission: the nth copy received, counted up to this index, unlocks the nth mission.
+    def item_effect(self, index: int) -> tuple[str, int]:
+        item_id = self.items_received[index].item
+        if item_id == MONEY_ID:
+            return "money", MONEY_AMOUNT
+        if item_id in MISSION_OF_UNLOCK:
+            return "unlock", MISSION_OF_UNLOCK[item_id]
+        chain = CHAIN_OF_PROGRESSIVE.get(item_id)
+        if chain is None:
+            return "none", 0
+        copy = sum(1 for item in self.items_received[:index + 1] if item.item == item_id)
+        return ("unlock", chain[copy - 1]) if copy <= len(chain) else ("none", 0)
+
+    # Relays to the mod the items our slot has received, from this position in the list to its end, each with its effect and its name.
     def send_items_to_mod(self, start: int = 0) -> None:
-        for index, item in enumerate(self.items_received[start:], start):
-            self.mod.send_item(index, item.item, self.item_names.lookup_in_slot(item.item))
+        for index in range(start, len(self.items_received)):
+            effect, value = self.item_effect(index)
+            self.mod.send_item(index, effect, value, self.item_names.lookup_in_slot(self.items_received[index].item))
 
     # Gives the client window its own title.
     def make_gui(self):

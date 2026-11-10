@@ -11,8 +11,8 @@ PORT = 2727
 class ModLink:
     """Local server that GTA III's mod connects to; every message is one text line (see docs/protocol.md)."""
 
-    def __init__(self, on_check: Callable[[int], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
-        # Called with the location id each time the mod sends "check <id>"; ModLink does not know what it does.
+    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
+        # Called with the mission's text key each time the mod sends "check <key>"; ModLink does not know what it does.
         self.on_check = on_check
         # Called each time the mod connects, right after the room state, so the context sends it every item received so far.
         self.on_mod_connected = on_mod_connected
@@ -58,8 +58,8 @@ class ModLink:
     # Applies one line received from the mod; unknown lines are logged and ignored, like the mod does.
     async def handle_line(self, line: str) -> None:
         words = line.split(" ")
-        if len(words) == 2 and words[0] == "check" and words[1].isdigit():
-            await self.on_check(int(words[1]))
+        if len(words) == 2 and words[0] == "check":
+            await self.on_check(words[1])
         else:
             logger.warning(f"Unknown message from GTA III: {line}")
 
@@ -72,9 +72,9 @@ class ModLink:
     def send_status(self) -> None:
         self.send("status connected" if self.room_connected else "status disconnected")
 
-    # Sends one received item to the mod: its position in our slot's list, its id and its name.
-    def send_item(self, index: int, item_id: int, name: str) -> None:
-        self.send(f"item {index} {item_id} {name}")
+    # Sends one received item to the mod: its position in our slot's list, what it does in the game ("unlock 24", "money 10000", "none 0") and its name.
+    def send_item(self, index: int, effect: str, value: int, name: str) -> None:
+        self.send(f"item {index} {effect} {value} {name}")
 
     # Sends one line to the mod, if it is connected.
     def send(self, message: str) -> None:

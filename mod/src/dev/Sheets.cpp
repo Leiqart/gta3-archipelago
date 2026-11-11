@@ -857,29 +857,28 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         }},
         // RC Toyz: in the Toyz van (149) on a marker, 2 minutes to blow up a gang's cars with the RC buggy; passed with a new record (any car beats the first).
         {.script = "rc1", .passedFlag = 1636, .start = kDiabloDestructionStart, .startModel = kToyzVan, .steps = {
-            {"blow up Diablo cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(137), 180},
+            {"blow up Diablo cars for 2 minutes", UntilMissionEnds, Both(KeepToyCarAway, BlowUpCarsOfModel(137)), 180},
         }},
         {.script = "rc2", .passedFlag = 1640, .start = kMafiaMassacreStart, .startModel = kToyzVan, .steps = {
-            // The Toyz van waits in Leone ground: once Sayonara Salvatore is played, the Mafia kills Claude while he drives the toy car, so he is invulnerable.
-            {"blow up Mafia cars for 2 minutes", UntilMissionEnds, Both(Invulnerable, BlowUpCarsOfModel(134)), 180},
+            {"blow up Mafia cars for 2 minutes", UntilMissionEnds, Both(KeepToyCarAway, BlowUpCarsOfModel(134)), 180},
         }},
-        {.script = "rc3", .passedFlag = 1644, .start = kRumpoRampageStart, .startModel = kToyzVan, .steps = {
-            {"blow up Hood cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(139), 180},
+        {.script = "rc3", .passedFlag = 1644, .start = kRumpoRampageStart, .startModel = kToyzVan, .island = 2, .steps = {
+            {"blow up Hood cars for 2 minutes", UntilMissionEnds, Both(KeepToyCarAway, BlowUpCarsOfModel(139)), 180},
         }},
-        {.script = "rc4", .passedFlag = 1648, .start = kCasinoCalamityStart, .startModel = kToyzVan, .steps = {
-            {"blow up Yakuza cars for 2 minutes", UntilMissionEnds, BlowUpCarsOfModel(136), 180},
+        {.script = "rc4", .passedFlag = 1648, .start = kCasinoCalamityStart, .startModel = kToyzVan, .island = 1, .steps = {
+            {"blow up Yakuza cars for 2 minutes", UntilMissionEnds, Both(KeepToyCarAway, BlowUpCarsOfModel(136)), 180},
         }},
         // Off-road and car park challenges: got into a car of the model in the start area, every checkpoint is marked at once, each touched in the car (LOCATE_PLAYER_IN_CAR_3D, 2 to 2.5 m).
         {.script = "t4x4_1", .passedFlag = 1512, .start = kPatriotPlaygroundStart, .startModel = 96, .steps = {
             {"touch every checkpoint of Patriot Playground", UntilMissionEnds, TouchCoordBlips, 300},
         }},
-        {.script = "t4x4_2", .passedFlag = 1516, .start = kRideInTheParkStart, .startModel = 90, .steps = {
+        {.script = "t4x4_2", .passedFlag = 1516, .start = kRideInTheParkStart, .startModel = 90, .island = 1, .steps = {
             {"touch every checkpoint of A Ride in the Park", UntilMissionEnds, TouchCoordBlips, 300},
         }},
-        {.script = "t4x4_3", .passedFlag = 1520, .start = kGrippedStart, .startModel = 96, .steps = {
+        {.script = "t4x4_3", .passedFlag = 1520, .start = kGrippedStart, .startModel = 96, .island = 1, .steps = {
             {"touch every checkpoint of Gripped!", UntilMissionEnds, TouchCoordBlips, 300},
         }},
-        {.script = "mayhem", .passedFlag = 1524, .start = kMultistoreyStart, .startModel = 129, .steps = {
+        {.script = "mayhem", .passedFlag = 1524, .start = kMultistoreyStart, .startModel = 129, .island = 1, .steps = {
             {"touch every checkpoint of Multistorey Mayhem", UntilMissionEnds, TouchCoordBlips, 300},
         }},
     };

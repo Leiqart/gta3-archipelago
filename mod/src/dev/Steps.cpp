@@ -12,6 +12,7 @@
 #include "CPacManPickups.h"
 #include "CPickups.h"
 #include "CPlane.h"
+#include "CPlayerInfo.h"
 #include "CPlayerPed.h"
 #include "CPools.h"
 #include "CVehicle.h"
@@ -570,6 +571,15 @@ Steps::Action Steps::FollowRadarSparing(std::vector<int> charGlobals) {
     };
 }
 
+void Steps::KeepToyCarAway() {
+    CVehicle* toy = CWorld::Players[CWorld::PlayerInFocus].m_pRemoteVehicle;
+    if (!toy || !FindPlayerPed()) return;
+    const CVector van = FindPlayerPed()->GetPosition();
+    if (Actions::Distance2D(toy->GetPosition(), van) > 30.0f) return;
+    Command<Commands::SET_CAR_COORDINATES>(CPools::GetVehicleRef(toy), van.x + 40.0f, van.y, -100.0f);
+    Log::Write("Drove the toy car 40 m away from the van");
+}
+
 void Steps::Invulnerable() {
     Command<Commands::SET_CHAR_PROOFS>(CPools::GetPedRef(FindPlayerPed()), 1, 1, 1, 1, 1);
 }
@@ -654,11 +664,14 @@ void Steps::KillFrenzyTargets() {
 Steps::Action Steps::BlowUpCarsOfModel(int model) {
     return [model] {
         const CVector at = Actions::PlayerPosition();
+        // Where Claude himself sits: in the Toyz van while he drives a toy car, which a target blowing up beside it would wreck with him inside.
+        const CVector self = FindPlayerPed()->GetPosition();
         auto* pool = CPools::ms_pVehiclePool;
         int blown = 0;
         for (int i = 0; i < pool->m_nSize; ++i) {
             CVehicle* car = pool->GetAt(i);
             if (!car || car == FindPlayerVehicle() || car->m_nModelIndex != model || Actions::Distance2D(car->GetPosition(), at) > 150.0f) continue;
+            if (Actions::Distance2D(car->GetPosition(), self) < 20.0f) continue;
             const int handle = CPools::GetVehicleRef(car);
             if (Command<Commands::IS_CAR_DEAD>(handle)) continue;
             // Counted first, as the game counts a car the player blows up (GET_NUM_OF_MODELS_KILLED_BY_PLAYER); EXPLODE_CAR alone has no culprit.

@@ -19,4 +19,6 @@ namespace Settings {
     bool Play();
     // skip_jobs=1: the run leaves out the vehicle jobs (Taxi Driver, Vigilante, Firefighter, Paramedic), which are no Archipelago locations yet. Default: off.
     bool SkipJobs();
+    // skip=rc2,ambulan: sheets the run leaves out, while their automation is being fixed. Default: none.
+    bool Skips(const std::string& script);
 }

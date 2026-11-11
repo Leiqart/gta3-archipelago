@@ -23,6 +23,8 @@ namespace Sheets {
         int startModel = 0;
         // True for a job started with the side mission button in its vehicle (Paramedic, Firefighter, Vigilante, Taxi Driver).
         bool startWithButton = false;
+        // The island a side mission is played on, which the story opens before it can be played there: 0 Portland, 1 Staunton Island (Last Requests), 2 Shoreside Vale (A Drop in the Ocean).
+        int island = 0;
         // Done before walking into the marker, like setting the clock for a mission that only starts at some hours; empty when nothing.
         Steps::Action beforeStart;
         // What the mission changes for good, replayed when the run skips it because later missions rely on it; nullptr when nothing.

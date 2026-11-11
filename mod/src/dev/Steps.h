@@ -161,6 +161,8 @@ namespace Steps {
     void KeepAlive();
     // Action: makes the player proof against bullets, fire, explosions, collisions and melee, for a step where shots kill him faster than KeepAlive heals; the autopilot takes it back when the sheet ends.
     void Invulnerable();
+    // Action: keeps the RC Toyz toy car 40 m away from the van Claude sits in, as a player drives it off: the game blows it up when the time is out, which kills him if it is still beside the van.
+    void KeepToyCarAway();
     // Action: moves every marked car, still whole, into a trap; with none marked, goes to the nearest marked place away from the trap, where the next one shows up (Bait).
     Action LureMarkedCarsTo(CVector trap);
     // Action: teleports the player to the place after the one they are near, round and round, for a mission whose targets only show up nearby (Espresso-2-Go).

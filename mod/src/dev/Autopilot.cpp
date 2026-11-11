@@ -6,6 +6,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 #include "plugin.h"
 #include "CCamera.h"
 #include "CCredits.h"
@@ -24,6 +25,8 @@
 #include "extensions/ScriptCommands.h"
 #include "../ClientLink.h"
 #include "../Log.h"
+#include "../MainScript.h"
+#include "../Markers.h"
 #include "../Missions.h"
 #include "Actions.h"
 #include "Autopilot.h"
@@ -246,9 +249,38 @@ namespace {
     int g_onMarkerSince = 0;
 
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
+    // True when the story has opened the sheet's island: Last Requests opens Staunton Island (g1084), A Drop in the Ocean Shoreside Vale (g1348).
+    bool IslandOpen(const Sheets::Sheet& sheet) {
+        if (sheet.island == 1) return Actions::ScriptGlobal(1084) == 1;
+        if (sheet.island == 2) return Actions::ScriptGlobal(1348) == 1;
+        return true;
+    }
+
+    // A sheet's mission number in main.scm, found by its script name ("luigi2" is 20), as the markers know missions by number; -1 for none.
+    int MissionNumber(const Sheets::Sheet& sheet) {
+        static std::map<std::string, int> numbers;
+        if (numbers.empty()) {
+            const std::vector<std::string>& missions = MainScript::Missions();
+            for (std::size_t number = 0; number < missions.size(); ++number) numbers[MainScript::ScriptName(missions[number])] = static_cast<int>(number);
+        }
+        const auto found = numbers.find(sheet.script);
+        return found == numbers.end() ? -1 : found->second;
+    }
+
+    // Logged once each time the autopilot finds nothing it can play yet, so a run waiting for an Archipelago unlock shows why.
+    bool g_waitingSaid = false;
+
     bool StartNextMission() {
+        bool waiting = false;
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
-            if (Sheets::Done(sheet) || (Settings::SkipJobs() && sheet.startWithButton)) continue;
+            if (Sheets::Done(sheet) || (Settings::SkipJobs() && sheet.startWithButton) || Settings::Skips(sheet.script)) continue;
+            // In an Archipelago run, a mission is played once it is unlocked and its trigger waits on its marker, a side mission once its island is open.
+            const int number = MissionNumber(sheet);
+            if ((number >= 0 && !Markers::IsPlayable(static_cast<unsigned char>(number))) || !IslandOpen(sheet)) {
+                waiting = true;
+                continue;
+            }
+            g_waitingSaid = false;
             if (!sheet.start) return false;
             if (sheet.beforeStart) sheet.beforeStart();
             const int now = CTimer::m_snTimeInMilliseconds;
@@ -279,6 +311,11 @@ namespace {
             }
             g_onMarkerSince = 0;
             return true;
+        }
+        if (waiting) {
+            if (!g_waitingSaid) Log::Write("Autopilot: nothing can be played yet, waiting for an unlock");
+            g_waitingSaid = true;
+            return false;
         }
         if (!g_runEndSaid) {
             Actions::Say(L"Autopilot: all test missions are passed");

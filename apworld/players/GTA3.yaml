@@ -5,3 +5,9 @@ game: Grand Theft Auto III
 Grand Theft Auto III:
   # ordered: each boss's missions in story order; free: any unlocked mission, in any order.
   mission_order: ordered
+  # true: Bomb Da Base: Act II asks for $100000 and The Exchange for $500000, as in the game; false: both start without paying.
+  need_money: false
+  # true: you die when another DeathLink player dies, and they die when you are wasted.
+  death_link: false
+  # With death_link: being busted counts as a death too.
+  arrest_is_death: true

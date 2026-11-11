@@ -21,4 +21,8 @@ namespace Settings {
     bool SkipJobs();
     // skip=rc2,ambulan: sheets the run leaves out, while their automation is being fixed. Default: none.
     bool Skips(const std::string& script);
+    // first=toni3,toni5: sheets the run tries before the others whenever they can be played, to test an order the story would not play. Default: none.
+    bool First(const std::string& script);
+    // pass=toni3: sheets forced to pass at their launch like those before start_at, to reach a state of the story without playing them. Default: none.
+    bool Passes(const std::string& script);
 }

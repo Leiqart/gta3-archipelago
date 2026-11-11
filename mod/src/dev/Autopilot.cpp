@@ -17,6 +17,8 @@
 #include "CPlayerInfo.h"
 #include "CPlayerPed.h"
 #include "CPools.h"
+#include "CRunningScript.h"
+#include "CTheScripts.h"
 #include "CTimer.h"
 #include "CVehicle.h"
 #include "CWanted.h"
@@ -134,8 +136,9 @@ namespace {
     // The sheet of the mission skipped last, until it has ended and its lasting changes are replayed; nullptr when none waits.
     const Sheets::Sheet* g_skipped = nullptr;
 
-    // The sheet with this name if it comes before start_at in the run, so the run skips it; nullptr otherwise.
+    // The sheet with this name if the run skips it, as the pass= setting lists it or it comes before start_at in the run; nullptr otherwise.
     const Sheets::Sheet* SkippedSheet(const std::string& script) {
+        if (Settings::Passes(script)) return Sheets::Find(script);
         if (Settings::StartAt().empty()) return nullptr;
         for (const Sheets::Sheet& sheet : Sheets::Run()) {
             if (Settings::StartAt() == sheet.script) return nullptr;
@@ -148,11 +151,12 @@ namespace {
     void SkipIfBeforeStart(const std::string& name) {
         const Sheets::Sheet* sheet = SkippedSheet(name);
         if (!sheet) return;
+        const std::string why = Settings::Passes(name) ? " as pass= lists it" : " to start at " + Settings::StartAt();
         if (!Missions::ForceMissionPass()) {
-            Stuck("could not skip " + name + " to start at " + Settings::StartAt());
+            Stuck("could not skip " + name + why);
             return;
         }
-        Log::Write("Autopilot: skipped " + name + " to start at " + Settings::StartAt());
+        Log::Write("Autopilot: skipped " + name + why);
         g_skipped = sheet;
     }
 
@@ -160,6 +164,14 @@ namespace {
 
     // Once a skipped mission has ended: replays what it changes for good, then gives back the control and camera its trigger may have taken.
     void FinishSkip() {
+        // While a skipped mission still runs, where its script is, every half second: a forced pass should end within a frame or two.
+        static int lastTrace = 0;
+        if (g_skipped && !Missions::Running().empty() && CTimer::m_snTimeInMilliseconds - lastTrace > 500) {
+            lastTrace = CTimer::m_snTimeInMilliseconds;
+            for (CRunningScript* script = CTheScripts::pActiveScripts; script; script = script->m_pNext) {
+                if (script->m_bIsMission) Log::Write("Autopilot: skipped " + std::string(script->m_szName) + " still runs at byte " + std::to_string(static_cast<int>(script->m_nIp) - 131072) + ", " + std::to_string(script->m_nSP) + " GOSUB(s) open");
+            }
+        }
         if (!g_skipped || !Missions::Running().empty()) return;
         if (g_skipped->afterSkip) g_skipped->afterSkip();
         Actions::GiveControlBack();
@@ -303,9 +315,21 @@ namespace {
     // Logged once each time the autopilot finds nothing it can play yet, so a run waiting for an Archipelago unlock shows why.
     bool g_waitingSaid = false;
 
+    // The sheets in the order the autopilot tries them: those of the first= setting, then the others, each group in the run's order.
+    std::vector<const Sheets::Sheet*> SheetsInOrder() {
+        std::vector<const Sheets::Sheet*> order;
+        for (const bool first : {true, false}) {
+            for (const Sheets::Sheet& sheet : Sheets::Run()) {
+                if (Settings::First(sheet.script) == first) order.push_back(&sheet);
+            }
+        }
+        return order;
+    }
+
     bool StartNextMission() {
         bool waiting = false;
-        for (const Sheets::Sheet& sheet : Sheets::Run()) {
+        for (const Sheets::Sheet* next : SheetsInOrder()) {
+            const Sheets::Sheet& sheet = *next;
             if (Sheets::Done(sheet) || (Settings::SkipJobs() && sheet.startWithButton) || Settings::Skips(sheet.script)) continue;
             // In an Archipelago run, a mission is played once it is unlocked and its trigger waits on its marker, a side mission once its island is open.
             const int number = MissionNumber(sheet);

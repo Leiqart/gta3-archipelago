@@ -1,9 +1,18 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "eScriptCommands.h"
 
 // The game's own data/main.scm, read once on first use: the main part, which the game loads at ScriptSpace[0], then each mission's code.
 namespace MainScript {
+    // The type byte main.scm writes before an argument's value: a 32-bit number, a global variable, an 8-bit number, a coordinate (16 bits, in sixteenths).
+    constexpr char kInt32 = 1, kGlobal = 2, kInt8 = 4, kCoordinate = 6;
+    // A command as main.scm stores it, to search the file for: its opcode in 2 bytes, low byte first, then its arguments.
+    std::string Command(eScriptCommands opcode, const std::string& arguments = "");
+    // A global variable argument, by the byte offset in ScriptSpace main.scm numbers it with (g528 is 528).
+    std::string Global(unsigned short offset);
+    // An 8-bit number argument.
+    std::string Int8(signed char value);
     // The whole file; empty if it could not be read.
     const std::string& Bytes();
     // The size of the main part: positions below it are the same in the file and in ScriptSpace.

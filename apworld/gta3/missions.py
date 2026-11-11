@@ -57,8 +57,7 @@ MONEY_AMOUNT = 10000
 
 # Every story mission, each contact's in story order (the order its progressive item unlocks them). The requires come from main.scm:
 # the mission whose passed routine runs START_NEW_SCRIPT for its trigger, or for the phone script that starts it (El Burro, King Courtney, D-Ice).
-# Pump-Action Pimp, The Fuzz Ball, Dead Skunk in the Trunk and The Getaway also require Chaperone: their triggers end themselves once
-# Salvatore's Called a Meeting is passed while Chaperone is not, and only Chaperone's passed routine starts them again.
+# Pump-Action Pimp, The Fuzz Ball, Dead Skunk in the Trunk and The Getaway also require Chaperone, as in the story; the mod takes off the pause their triggers take between Salvatore's Called a Meeting and Chaperone.
 MISSIONS = [
     Mission("Give Me Liberty", 1, 0, "LM1", 19, "Luigi", PORTLAND),
     Mission("Don't Spank Ma Bitch Up", 3, 4, "LM2", 20, "Luigi", PORTLAND, ("Give Me Liberty",)),

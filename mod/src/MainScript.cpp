@@ -52,6 +52,18 @@ namespace {
     }
 }
 
+std::string MainScript::Command(eScriptCommands opcode, const std::string& arguments) {
+    return std::string{static_cast<char>(opcode & 0xFF), static_cast<char>(opcode >> 8)} + arguments;
+}
+
+std::string MainScript::Global(unsigned short offset) {
+    return {kGlobal, static_cast<char>(offset & 0xFF), static_cast<char>(offset >> 8)};
+}
+
+std::string MainScript::Int8(signed char value) {
+    return {kInt8, static_cast<char>(value)};
+}
+
 const std::string& MainScript::Bytes() { return TheFile().bytes; }
 std::size_t MainScript::MainSize() { return TheFile().mainSize; }
 const std::vector<std::string>& MainScript::Missions() { return TheFile().missions; }

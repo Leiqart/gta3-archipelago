@@ -26,7 +26,7 @@ An [Archipelago](https://archipelago.gg) multiworld integration for classic **Gr
 
 ## Installation
 
-You need **GTA III for PC, version 1.0** (see [Steam version](#steam-version) for the Steam copy), [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.7 or newer, and an ASI loader such as [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader).
+You need **GTA III for PC, version 1.0** (see [Steam version](#steam-version) for the Steam copy), [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.7 or newer, and the ASI loader [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (download its 32-bit [`Ultimate-ASI-Loader.zip`](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip), not the `_x64` one).
 
 ### Release files
 
@@ -40,7 +40,7 @@ Use the plugin and the APWorld of the same release, and generate a new room for 
 
 ### Setup
 
-1. Put the ASI loader (`dinput8.dll` from Ultimate ASI Loader) next to `gta3.exe`.
+1. Download [Ultimate-ASI-Loader.zip](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip) and put the `dinput8.dll` it contains next to `gta3.exe`.
 2. Create a `scripts` folder next to `gta3.exe` if there is none, and put `GTA3Archipelago.asi` in it.
 3. Double-click `gta3.apworld` to install it in Archipelago (or copy it into Archipelago's `custom_worlds` folder).
 4. Write your player settings in a YAML file, for example `GTA3.yaml`, and give it to whoever generates the room:

@@ -3,11 +3,13 @@
 #include "MinHook.h"
 #include "Checks.h"
 #include "ClientLink.h"
+#include "Deaths.h"
 #include "Items.h"
 #include "Log.h"
 #include "Markers.h"
 #include "Menu.h"
 #include "Missions.h"
+#include "Options.h"
 #include "Story.h"
 #ifdef GTA3AP_DEV
 #include "dev/Cheats.h"
@@ -42,10 +44,13 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         Log::Write("Hello from GTA3Archipelago!");
         // Here and not in ModThread: hooking the game loop must happen before the game runs it; Missions first, so its events are ready for the others.
         Missions::Install();
+        ClientLink::Install();
         Checks::Install();
         Markers::Install();
         Story::Install();
+        Options::Install();
         Items::Install();
+        Deaths::Install();
 #ifdef GTA3AP_DEV
         Cheats::Install(folder);
 #endif

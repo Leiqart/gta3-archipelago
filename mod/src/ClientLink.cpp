@@ -1,10 +1,13 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <atomic>
+#include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include "plugin.h"
 #include "ClientLink.h"
 #include "Log.h"
 
@@ -20,6 +23,8 @@ namespace {
     // The lines the network thread received for the game thread, which takes them each frame.
     std::mutex g_linesMutex;
     std::vector<std::string> g_lines;
+    // The modules' handlers of the client's commands, by command; registered from DllMain before the game runs, then only read on the game thread.
+    std::map<std::string, std::function<void(const std::string&)>> g_handlers;
 
     // Records the room state, and logs it only when it changes.
     void SetConnected(bool connected) {
@@ -112,7 +117,22 @@ bool ClientLink::Send(const std::string& message) {
     return send(sock, line.data(), static_cast<int>(line.size()), 0) == static_cast<int>(line.size());
 }
 
-std::vector<std::string> ClientLink::TakeLines() {
-    const std::lock_guard<std::mutex> lock(g_linesMutex);
-    return std::exchange(g_lines, {});
+void ClientLink::On(const std::string& command, std::function<void(const std::string& line)> handler) {
+    g_handlers[command] = std::move(handler);
+}
+
+void ClientLink::Install() {
+    // Once per frame on the game thread: each line received since the last frame goes to the handler of its first word.
+    plugin::Events::gameProcessEvent += [] {
+        std::vector<std::string> lines;
+        {
+            const std::lock_guard<std::mutex> lock(g_linesMutex);
+            lines = std::exchange(g_lines, {});
+        }
+        for (const std::string& line : lines) {
+            const auto handler = g_handlers.find(line.substr(0, line.find(' ')));
+            if (handler != g_handlers.end()) handler->second(line);
+            else Log::Write("Unknown message from the client: " + line);
+        }
+    };
 }

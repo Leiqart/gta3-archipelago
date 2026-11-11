@@ -41,19 +41,52 @@ namespace {
     // Crash reports written so far, a few at most in case one exception repeats.
     std::atomic<int> g_crashesLogged{0};
 
+    // The module holding this address and the offset in it, like "gta3.exe+0x55CE"; empty when no module holds it.
+    std::string Where(std::uintptr_t address) {
+        HMODULE module = nullptr;
+        if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<const char*>(address), &module)) return "";
+        char path[MAX_PATH] = {};
+        GetModuleFileNameA(module, path, MAX_PATH);
+        const char* name = std::strrchr(path, '\\') ? std::strrchr(path, '\\') + 1 : path;
+        char where[MAX_PATH + 16];
+        std::snprintf(where, sizeof(where), "%s+0x%lX", name, static_cast<unsigned long>(address - reinterpret_cast<std::uintptr_t>(module)));
+        return where;
+    }
+
+    // True when the bytes before this address in a module are a CALL (E8 and 4 bytes, or FF with a register, memory or displacement form): it is then a return address.
+    bool FollowsACall(std::uintptr_t address) {
+        const auto* code = reinterpret_cast<const unsigned char*>(address);
+        if (code[-5] == 0xE8) return true;
+        return (code[-2] == 0xFF && (code[-1] & 0x38) == 0x10) || (code[-3] == 0xFF && (code[-2] & 0x38) == 0x10) || (code[-6] == 0xFF && (code[-5] & 0x38) == 0x10);
+    }
+
+    // The return addresses found on the crashed thread's stack, newest first: a rough call stack, enough to tell which game function called the one that crashed.
+    std::string CallStack(const CONTEXT& context) {
+        const auto* top = reinterpret_cast<const std::uintptr_t*>(context.Esp);
+        const auto* base = reinterpret_cast<const std::uintptr_t*>(reinterpret_cast<NT_TIB*>(NtCurrentTeb())->StackBase);
+        std::string stack;
+        int found = 0;
+        for (const std::uintptr_t* slot = top; slot < base && slot < top + 1024 && found < 12; ++slot) {
+            const std::string where = Where(*slot);
+            if (where.empty() || !FollowsACall(*slot)) continue;
+            stack += (found++ ? ", " : "") + where;
+        }
+        return stack.empty() ? "nothing found" : stack;
+    }
+
     // Sees every exception first: writes a fatal one with the module and offset it happened at, so the test loop tells a crash from a game closed by hand.
     LONG CALLBACK LogCrash(EXCEPTION_POINTERS* info) {
         const DWORD code = info->ExceptionRecord->ExceptionCode;
         // Below 0xC0000000 are warnings and notices, and 0xE06D7363 is a C++ exception its code may catch.
         if (code < 0xC0000000 || code == 0xE06D7363 || g_crashesLogged++ >= 3) return EXCEPTION_CONTINUE_SEARCH;
-        const void* address = info->ExceptionRecord->ExceptionAddress;
-        HMODULE module = nullptr;
-        char path[MAX_PATH] = "unknown module";
-        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<const char*>(address), &module)) GetModuleFileNameA(module, path, MAX_PATH);
-        const char* name = std::strrchr(path, '\\') ? std::strrchr(path, '\\') + 1 : path;
+        const auto address = reinterpret_cast<std::uintptr_t>(info->ExceptionRecord->ExceptionAddress);
+        const CONTEXT& context = *info->ContextRecord;
         char line[MAX_PATH + 96];
-        std::snprintf(line, sizeof(line), "Autopilot: the game crashed, exception 0x%08lX at 0x%p (%s+0x%lX)", code, address, name, static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(address) - reinterpret_cast<std::uintptr_t>(module)));
+        std::snprintf(line, sizeof(line), "Autopilot: the game crashed, exception 0x%08lX at 0x%08lX (%s)", code, static_cast<unsigned long>(address), Where(address).c_str());
         Log::Write(line);
+        std::snprintf(line, sizeof(line), "  registers: eax %08lX, ebx %08lX, ecx %08lX, edx %08lX, esi %08lX, edi %08lX, ebp %08lX, esp %08lX", context.Eax, context.Ebx, context.Ecx, context.Edx, context.Esi, context.Edi, context.Ebp, context.Esp);
+        Log::Write(line);
+        Log::Write("  called from: " + CallStack(context));
         return EXCEPTION_CONTINUE_SEARCH;
     }
 

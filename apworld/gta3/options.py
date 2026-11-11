@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from Options import Choice, PerGameCommonOptions, Toggle
+from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Toggle
 
 
 class MissionOrder(Choice):
@@ -16,7 +16,14 @@ class NeedMoney(Toggle):
     display_name = "Need Money"
 
 
+class ArrestIsDeath(DefaultOnToggle):
+    """With death_link on: being busted also sends a death to the other players, as it ends a mission like being wasted does."""
+    display_name = "Arrest Is Death"
+
+
 @dataclass
 class GTA3Options(PerGameCommonOptions):
     mission_order: MissionOrder
     need_money: NeedMoney
+    death_link: DeathLink
+    arrest_is_death: ArrestIsDeath

@@ -26,9 +26,11 @@ class GTA3Context(CommonContext):
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
-        self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_slot_to_mod)
+        self.mod = ModLink(on_check=self.on_mod_check, on_death=self.on_mod_death, on_mod_connected=self.send_slot_to_mod)
         # Our slot's options the mod plays by, from the room's slot data; empty until the room has connected us.
         self.slot_options: dict[str, int] = {}
+        # Whether being busted sends a death to the DeathLink players, as the slot data says.
+        self.arrest_is_death = True
 
     # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has; a closer's also sends the missions it loses, the goal mission's also wins.
     async def on_mod_check(self, key: str) -> None:
@@ -52,6 +54,21 @@ class GTA3Context(CommonContext):
         if sent:
             names = ", ".join(self.location_names.lookup_in_slot(location_id) for location_id in sorted(sent))
             logger.info(f"Mission {key} closed {len(sent)} missions of the story, checked too: {names}")
+
+    # Called by ModLink for each "death wasted|busted" line: sends our death to the DeathLink players, if our slot is one, and a busted only when it counts.
+    async def on_mod_death(self, how: str) -> None:
+        if "DeathLink" not in self.tags:
+            logger.info(f"The player was {how}: DeathLink is off")
+            return
+        if how == "busted" and not self.arrest_is_death:
+            logger.info("The player was busted: arrest_is_death is off, no death sent")
+            return
+        await self.send_death(f"{self.player_names[self.slot]} was {how} in Liberty City")
+
+    # A DeathLink player died elsewhere: the client logs it as usual, and the mod kills the player.
+    def on_deathlink(self, data: dict) -> None:
+        super().on_deathlink(data)
+        self.mod.send_kill(data.get("source", "Someone"))
 
     # Tells the room our slot has reached its goal: it announces it and, depending on the room's settings, releases our remaining items; sending it again changes nothing.
     async def send_goal(self) -> None:
@@ -102,8 +119,11 @@ class GTA3Context(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         super().on_package(cmd, args)
         if cmd == "Connected":
-            # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed).
-            self.slot_options = {"need_money": int(args["slot_data"].get("need_money", True))}
+            # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed, no DeathLink).
+            slot_data = args["slot_data"]
+            self.slot_options = {"need_money": int(slot_data.get("need_money", True))}
+            self.arrest_is_death = bool(slot_data.get("arrest_is_death", True))
+            Utils.async_start(self.update_death_link(bool(slot_data.get("death_link", False))), name="update death link")
             for name, value in self.slot_options.items():
                 self.mod.send_option(name, value)
             self.mod.set_room_connected(True)

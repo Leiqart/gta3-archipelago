@@ -77,9 +77,13 @@ class GTA3World(World):
         names += [MONEY_ITEM] * (len(ALL_MISSIONS) - len(names))
         self.multiworld.itempool += [self.create_item(name) for name in names]
 
-    # What the client needs of our slot's options, to tell the mod: whether missions ask for their money; the logic counts no money either way.
+    # What the client needs of our slot's options: whether missions ask for their money (the logic counts no money either way), and the DeathLink settings.
     def fill_slot_data(self) -> dict:
-        return {"need_money": bool(self.options.need_money)}
+        return {
+            "need_money": bool(self.options.need_money),
+            "death_link": bool(self.options.death_link),
+            "arrest_is_death": bool(self.options.arrest_is_death),
+        }
 
     # Each mission gets its rule; passing The Exchange, the end of the story, wins.
     def set_rules(self) -> None:

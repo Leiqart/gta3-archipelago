@@ -11,11 +11,13 @@ PORT = 2727
 class ModLink:
     """Local server that GTA III's mod connects to; every message is one text line (see docs/protocol.md)."""
 
-    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
+    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_death: Callable[[str], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
         # Called with the mission's text key each time the mod sends "check <key>"; ModLink does not know what it does.
         self.on_check = on_check
         # Called each time the mod connects, right after the room state, so the context sends it every item received so far.
         self.on_mod_connected = on_mod_connected
+        # Called with "wasted" or "busted" each time the mod sends "death <how>".
+        self.on_death = on_death
         self.room_connected = False
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.Server | None = None
@@ -60,6 +62,8 @@ class ModLink:
         words = line.split(" ")
         if len(words) == 2 and words[0] == "check":
             await self.on_check(words[1])
+        elif len(words) == 2 and words[0] == "death":
+            await self.on_death(words[1])
         else:
             logger.warning(f"Unknown message from GTA III: {line}")
 
@@ -71,6 +75,10 @@ class ModLink:
     # Sends the current room state to the mod.
     def send_status(self) -> None:
         self.send("status connected" if self.room_connected else "status disconnected")
+
+    # Tells the mod another DeathLink player died, by their name: the mod kills the player.
+    def send_kill(self, name: str) -> None:
+        self.send(f"kill {name}")
 
     # Sends one of our slot's options to the mod, by its name in the YAML and its value as a number ("option need_money 0").
     def send_option(self, name: str, value: int) -> None:

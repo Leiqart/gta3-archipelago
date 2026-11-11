@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <cctype>
 #include <fstream>
 #include <iterator>
 #include "Log.h"
@@ -54,6 +55,16 @@ namespace {
 const std::string& MainScript::Bytes() { return TheFile().bytes; }
 std::size_t MainScript::MainSize() { return TheFile().mainSize; }
 const std::vector<std::string>& MainScript::Missions() { return TheFile().missions; }
+
+std::string MainScript::ScriptName(const std::string& code) {
+    for (std::size_t at = code.find("\xA4\x03", 0, 2); at != std::string::npos; at = code.find("\xA4\x03", at + 1, 2)) {
+        if (!IsKeyAt(code, at + 2)) continue;
+        std::string name;
+        for (std::size_t i = at + 2; code[i]; ++i) name += static_cast<char>(std::tolower(static_cast<unsigned char>(code[i])));
+        return name;
+    }
+    return "";
+}
 
 bool MainScript::IsKeyAt(const std::string& code, std::size_t at) {
     for (std::size_t length = 0; length < 8 && at + length < code.size(); ++length) {

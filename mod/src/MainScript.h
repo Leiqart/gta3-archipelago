@@ -12,4 +12,6 @@ namespace MainScript {
     const std::vector<std::string>& Missions();
     // True when a text key starts at this position: 1 to 7 of A-Z, 0-9 or _, then a zero byte.
     bool IsKeyAt(const std::string& code, std::size_t at);
+    // A mission's name from its code: its first SCRIPT_NAME (opcode 0x03A4 and the name), in lowercase as the game stores it ("luigi2"); empty if it has none.
+    std::string ScriptName(const std::string& code);
 }

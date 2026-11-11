@@ -56,14 +56,7 @@ namespace {
             return name;
         }
         const std::string* code = RunningMissionCode();
-        if (!code) return "";
-        for (std::size_t at = code->find("\xA4\x03", 0, 2); at != std::string::npos; at = code->find("\xA4\x03", at + 1, 2)) {
-            if (!MainScript::IsKeyAt(*code, at + 2)) continue;
-            std::string name;
-            for (std::size_t i = at + 2; (*code)[i]; ++i) name += static_cast<char>(std::tolower(static_cast<unsigned char>((*code)[i])));
-            return name;
-        }
-        return "";
+        return code ? MainScript::ScriptName(*code) : "";
     }
 
     // The mission's name, from the moment LOAD_AND_LAUNCH_MISSION starts it; empty while there is none.

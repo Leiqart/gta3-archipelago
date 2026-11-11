@@ -208,3 +208,13 @@ void Markers::Unlock(unsigned char number) {
     mission->unlocked = true;
     Log::Write("Markers: unlocked mission " + std::to_string(number) + " (" + TitleKey(*mission) + ")");
 }
+
+bool Markers::IsPlayable(unsigned char number) {
+    const Mission* mission = Find(number);
+    if (!mission) return true;
+    if (!mission->unlocked) return false;
+    for (CRunningScript* script = CTheScripts::pActiveScripts; script; script = script->m_pNext) {
+        if (MissionOf(*script) == mission) return true;
+    }
+    return false;
+}

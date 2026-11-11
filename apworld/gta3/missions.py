@@ -28,7 +28,7 @@ class Mission:
     contact: str
     # The farthest island it is played on: Portland is always open, the others once the story opens them.
     island: str
-    # The missions whose pass starts its trigger in the game: until the mod can start triggers itself, they must be reachable first.
+    # The missions whose pass starts its trigger in the game: ordered mode requires them, free mode does not, as the mod starts the trigger itself.
     requires: tuple[str, ...] = ()
 
 

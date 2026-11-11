@@ -83,10 +83,10 @@ class GTA3World(World):
             self.multiworld.get_location(mission.name, self.player).access_rule = self.mission_rule(mission)
         self.multiworld.completion_condition[self.player] = lambda state: state.can_reach(GOAL_MISSION, "Location", self.player)
 
-    # A mission needs its unlock (free) or as many copies of its contact's progressive item as its place in the contact's order (ordered),
-    # and the missions whose pass starts its trigger; its island comes from its region.
+    # A mission needs its unlock (free) or as many copies of its contact's progressive item as its place in the contact's order (ordered); its island comes from its region.
+    # Ordered mode also follows the story: the missions whose pass starts its trigger come first. Free mode plays any unlocked mission, as the mod starts its trigger itself.
     def mission_rule(self, mission: Mission):
-        requires = mission.requires
+        requires = () if self.options.mission_order == MissionOrder.option_free else mission.requires
         if not mission.unlock_id:
             return lambda state: all(state.can_reach(name, "Location", self.player) for name in requires)
         if self.options.mission_order == MissionOrder.option_free:

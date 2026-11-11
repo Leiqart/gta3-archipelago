@@ -3,33 +3,74 @@
 #include <string>
 #include <vector>
 #include "plugin.h"
+#include "CPlayerPed.h"
 #include "CRadar.h"
 #include "CRunningScript.h"
 #include "CTheScripts.h"
 #include "CTimer.h"
+#include "common.h"
+#include "eScriptCommands.h"
 #include "Log.h"
 #include "MainScript.h"
 #include "Markers.h"
 
 namespace {
-    // The script commands a trigger is found by, as main.scm stores them: 2 bytes of opcode (low byte first), then each argument's type byte and value.
-    constexpr char kStartNewScript[] = "\x4F\x00\x01";
-    constexpr char kPrintBig[] = "\xBA\x00";
-    constexpr char kLaunchMission[] = "\x17\x04\x04";
+    // The type byte main.scm writes before an argument's value: a 32-bit number, a global variable, an 8-bit number, a coordinate (16 bits, in sixteenths).
+    constexpr char kInt32 = 1, kGlobal = 2, kInt8 = 4, kCoordinate = 6;
 
-    // A mission's trigger: the script waiting for the player on its marker, from its first byte to the next script's, with where its title's text key is.
+    // A command as main.scm stores it: its opcode in 2 bytes, low byte first, then its arguments.
+    std::string Command(eScriptCommands opcode, const std::string& arguments = "") {
+        return std::string{static_cast<char>(opcode & 0xFF), static_cast<char>(opcode >> 8)} + arguments;
+    }
+
+    // The player as the triggers name him: global 528, where main.scm keeps his handle.
+    const std::string kPlayer = {kGlobal, '\x10', '\x02'};
+
+    // The commands a trigger is found by: the script starts, the launch of its mission, its title, and the LOCATE of the player on its marker (on foot or any means, stopped or not).
+    const std::string kStartNewScript = Command(COMMAND_START_NEW_SCRIPT, {kInt32});
+    const std::string kLaunchMission = Command(COMMAND_LOAD_AND_LAUNCH_MISSION_INTERNAL, {kInt8});
+    const std::string kPrintBig = Command(COMMAND_PRINT_BIG);
+    const std::string kLocates[] = {
+        Command(COMMAND_LOCATE_PLAYER_ON_FOOT_3D, kPlayer),
+        Command(COMMAND_LOCATE_STOPPED_PLAYER_ON_FOOT_3D, kPlayer),
+        Command(COMMAND_LOCATE_PLAYER_ANY_MEANS_3D, kPlayer),
+        Command(COMMAND_LOCATE_STOPPED_PLAYER_ANY_MEANS_3D, kPlayer),
+    };
+
+    // What START_NEW_SCRIPT runs, CTheScripts::StartNewScript at 0x439000 in gta3.exe 1.0 (plugin-sdk does not declare it): starts a script at this position of ScriptSpace.
+    CRunningScript* StartNewScript(unsigned int ip) {
+        return plugin::CallAndReturn<CRunningScript*, 0x439000, unsigned int>(ip);
+    }
+
+    // How long a trigger is put to sleep at a time; pushed back every frame, it never wakes until let go.
+    constexpr unsigned int kTriggerSleep = 1000;
+    // How close, in metres, a contact blip must be to a marker to be the one marking it.
+    constexpr float kSamePlace = 5.0f;
+
+    // A mission's trigger: the script waiting for the player on its marker, from its first byte to the next script's.
     struct Trigger {
         std::size_t start = 0;
         std::size_t end = 0;
+        // Where the text key of its title is in main.scm; 0 when it prints none.
         std::size_t titleAt = 0;
+        // Where its marker is: the place its LOCATE checks the player against.
+        CVector marker;
     };
 
     // A mission started from a contact's marker or phone: its number in main.scm, the contact's radar sprite (none for Marty's phone, which has no blip), and its state.
     struct Mission {
         unsigned char number;
         unsigned short sprite;
+        // Unlocked by an item of the room, for every game played with it.
         bool unlocked = false;
         Trigger trigger;
+        // The rest is about the game being played, forgotten when another starts or is loaded.
+        // Whether its trigger ran on the last frame.
+        bool running = false;
+        // Whether this mod has started its trigger: once, after which the trigger waits on its marker or ends by itself (mission passed).
+        bool started = false;
+        // The contact blip this mod put on its marker, as CRadar's handle: the slot in the low 16 bits, that slot's use count (at least 1, so never 0) in the high ones; 0 when none.
+        int blip = 0;
     };
 
     // Every story mission started from a contact, in story order; Give Me Liberty and Luigi's Girls are left out, as the intro starts them.
@@ -108,21 +149,53 @@ namespace {
         return nullptr;
     }
 
+    // The mission whose trigger this script is, by the position it runs at; nullptr for any other script.
+    Mission* MissionOf(const CRunningScript& script) {
+        for (Mission& mission : g_missions) {
+            if (script.m_nIp >= mission.trigger.start && script.m_nIp < mission.trigger.end) return &mission;
+        }
+        return nullptr;
+    }
+
+    // The mission's name in the log: its number and the text key of its title, like "28 (JM5)".
+    std::string Name(const Mission& mission) {
+        const char* title = mission.trigger.titleAt ? MainScript::Bytes().c_str() + mission.trigger.titleAt : "";
+        return std::to_string(mission.number) + " (" + title + ")";
+    }
+
     // Every position where a START_NEW_SCRIPT starts a script in the main part (where the triggers live), sorted; most triggers are started from the missions' code.
     std::vector<std::size_t> ScriptStarts(const std::string& scm) {
         std::vector<std::size_t> starts;
-        for (std::size_t at = scm.find(kStartNewScript, 0, 3); at != std::string::npos && at + 7 <= scm.size(); at = scm.find(kStartNewScript, at + 1, 3)) {
-            const int position = *reinterpret_cast<const int*>(scm.data() + at + 3);
+        for (std::size_t at = scm.find(kStartNewScript); at != std::string::npos && at + kStartNewScript.size() + 4 <= scm.size(); at = scm.find(kStartNewScript, at + 1)) {
+            const int position = *reinterpret_cast<const int*>(scm.data() + at + kStartNewScript.size());
             if (position > 0 && static_cast<std::size_t>(position) < MainScript::MainSize()) starts.push_back(static_cast<std::size_t>(position));
         }
         std::sort(starts.begin(), starts.end());
         return starts;
     }
 
+    // Reads the coordinate argument at this position of main.scm into value; false when another type of argument is there.
+    bool ReadCoordinate(const std::string& scm, std::size_t at, float& value) {
+        if (at + 3 > scm.size() || scm[at] != kCoordinate) return false;
+        value = *reinterpret_cast<const short*>(scm.data() + at + 1) / 16.0f;
+        return true;
+    }
+
+    // The place of a trigger's marker: the x, y and z of its first LOCATE of the player, between start and end; all zero when there is none.
+    CVector FindMarker(const std::string& scm, std::size_t start, std::size_t end) {
+        std::size_t first = std::string::npos;
+        for (const std::string& locate : kLocates) first = std::min(first, scm.find(locate, start));
+        if (first >= end) return {};
+        // All four LOCATE patterns have the same size; each coordinate after them takes 3 bytes.
+        const std::size_t at = first + kLocates[0].size();
+        CVector marker;
+        if (!ReadCoordinate(scm, at, marker.x) || !ReadCoordinate(scm, at + 3, marker.y) || !ReadCoordinate(scm, at + 6, marker.z)) return {};
+        return marker;
+    }
+
     // A mission's trigger: the script holding its LOAD_AND_LAUNCH_MISSION_INTERNAL in the main part, between the script starts around it; all zero when not found.
     Trigger FindTrigger(const std::string& scm, const std::vector<std::size_t>& starts, unsigned char number) {
-        const char launch[] = {kLaunchMission[0], kLaunchMission[1], kLaunchMission[2], static_cast<char>(number)};
-        const std::size_t at = scm.find(launch, 0, 4);
+        const std::size_t at = scm.find(kLaunchMission + static_cast<char>(number));
         if (at == std::string::npos || at >= MainScript::MainSize()) return {};
         const auto next = std::upper_bound(starts.begin(), starts.end(), at);
         if (next == starts.begin()) return {};
@@ -130,9 +203,10 @@ namespace {
         trigger.start = *(next - 1);
         trigger.end = next != starts.end() ? *next : MainScript::MainSize();
         // Its title is the last PRINT_BIG before the launch, an 8-byte text key the game looks up in the player's language.
-        for (std::size_t title = scm.find(kPrintBig, trigger.start, 2); title < at; title = scm.find(kPrintBig, title + 1, 2)) {
-            if (MainScript::IsKeyAt(scm, title + 2)) trigger.titleAt = title + 2;
+        for (std::size_t title = scm.find(kPrintBig, trigger.start); title < at; title = scm.find(kPrintBig, title + 1)) {
+            if (MainScript::IsKeyAt(scm, title + kPrintBig.size())) trigger.titleAt = title + kPrintBig.size();
         }
+        trigger.marker = FindMarker(scm, trigger.start, at);
         return trigger;
     }
 
@@ -149,38 +223,79 @@ namespace {
         Log::Write("Markers: found the triggers of " + std::to_string(found) + " of " + std::to_string(std::size(g_missions)) + " missions");
     }
 
-    // The mission whose trigger this script is, by the position it runs at; nullptr for any other script.
-    Mission* MissionOf(const CRunningScript& script) {
-        for (Mission& mission : g_missions) {
-            if (script.m_nIp >= mission.trigger.start && script.m_nIp < mission.trigger.end) return &mission;
-        }
-        return nullptr;
+    // True while UNDRESS_CHAR has taken the player's model away, until DRESS_CHAR (the intro and Give Me Liberty change his clothes so).
+    bool PlayerUndressed() {
+        const CPlayerPed* player = FindPlayerPed();
+        return player && !player->m_pRwObject;
     }
 
-    // The text key of the mission's title, from main.scm; empty when its trigger prints none.
-    std::string TitleKey(const Mission& mission) {
-        return mission.trigger.titleAt ? std::string(MainScript::Bytes().c_str() + mission.trigger.titleAt) : std::string();
-    }
-
-    // A locked mission's trigger is kept asleep, so it never checks whether the player stands on its marker; returns the contacts with an unlocked mission waiting on their marker.
-    std::array<bool, RADAR_SPRITE_COUNT> FollowTriggers() {
-        std::array<bool, RADAR_SPRITE_COUNT> waiting{};
+    // Notes which triggers run, and keeps asleep every script of a locked mission's trigger (two once the story starts it again), so none checks whether the player stands on the marker.
+    void FollowTriggers() {
+        // An undressed player has no animations, and a trigger's LOCATE_STOPPED reads them: started out of order, a trigger may run then, so all sleep until he is dressed.
+        const bool undressed = PlayerUndressed();
+        for (Mission& mission : g_missions) mission.running = false;
         for (CRunningScript* script = CTheScripts::pActiveScripts; script; script = script->m_pNext) {
-            const Mission* mission = MissionOf(*script);
+            Mission* mission = MissionOf(*script);
             if (!mission) continue;
-            if (mission->unlocked) waiting[mission->sprite] = true;
-            else script->m_nWakeTime = CTimer::m_snTimeInMilliseconds + 1000;
+            mission->running = true;
+            if (!mission->unlocked || undressed) script->m_nWakeTime = CTimer::m_snTimeInMilliseconds + kTriggerSleep;
         }
-        return waiting;
+    }
+
+    // Any order: an unlocked mission whose trigger does not run gets it started, once a game, as the mission whose pass starts it in the story may not be passed yet.
+    void StartMissingTriggers() {
+        for (Mission& mission : g_missions) {
+            if (!mission.unlocked || mission.running || mission.started || !mission.trigger.end) continue;
+            mission.started = true;
+            StartNewScript(static_cast<unsigned int>(mission.trigger.start));
+            Log::Write("Markers: started the trigger of mission " + Name(mission) + " at " + std::to_string(mission.trigger.start));
+        }
+    }
+
+    // True when a contact's blip already marks this place, wherever the game or this mod made it.
+    bool HasContactBlipAt(const CVector& place) {
+        for (const tRadarTrace& blip : CRadar::ms_RadarTrace) {
+            if (blip.m_bInUse && blip.m_nBlipType == BLIP_CONTACTPOINT && (blip.m_vecPos - place).Magnitude2D() < kSamePlace) return true;
+        }
+        return false;
+    }
+
+    // Any order: a waiting mission whose contact has no blip on its marker (Kenji's comes from an Asuka mission) gets one, on the radar and on the ground, until its trigger ends.
+    // A passed mission's trigger runs up to 250 ms more (WAIT g20) before it sees the pass and ends: a blip it gets then goes with it.
+    void FollowContactBlips() {
+        for (Mission& mission : g_missions) {
+            if (mission.blip && !mission.running) {
+                CRadar::ClearBlip(mission.blip);
+                mission.blip = 0;
+                Log::Write("Markers: removed the blip of mission " + Name(mission));
+            }
+            if (mission.blip || !mission.unlocked || !mission.running || mission.sprite == RADAR_SPRITE_NONE || HasContactBlipAt(mission.trigger.marker)) continue;
+            // What ADD_SPRITE_BLIP_FOR_CONTACT_POINT does: a contact blip at the place, then its sprite.
+            mission.blip = CRadar::SetCoordBlip(BLIP_CONTACTPOINT, mission.trigger.marker, 2, BLIP_DISPLAY_BOTH);
+            CRadar::SetBlipSprite(mission.blip, mission.sprite);
+            Log::Write("Markers: added a blip for mission " + Name(mission));
+        }
     }
 
     // A contact's marker shows on the radar and on the ground only while one of its unlocked missions waits there; the blips of other sprites (save houses) are left alone.
-    void ShowWaitingContacts(const std::array<bool, RADAR_SPRITE_COUNT>& waiting) {
-        std::array<bool, RADAR_SPRITE_COUNT> managed{};
-        for (const Mission& mission : g_missions) managed[mission.sprite] = mission.sprite != RADAR_SPRITE_NONE;
+    void ShowWaitingContacts() {
+        std::array<bool, RADAR_SPRITE_COUNT> managed{}, waiting{};
+        for (const Mission& mission : g_missions) {
+            managed[mission.sprite] = mission.sprite != RADAR_SPRITE_NONE;
+            if (mission.unlocked && mission.running) waiting[mission.sprite] = true;
+        }
         for (tRadarTrace& blip : CRadar::ms_RadarTrace) {
             if (!blip.m_bInUse || blip.m_nBlipType != BLIP_CONTACTPOINT || blip.m_nRadarSprite >= RADAR_SPRITE_COUNT || !managed[blip.m_nRadarSprite]) continue;
             blip.m_nBlipDisplay = waiting[blip.m_nRadarSprite] ? BLIP_DISPLAY_BOTH : BLIP_DISPLAY_NEITHER;
+        }
+    }
+
+    // A new game, or a loaded one, starts with the scripts and blips of its own: what this mod started or added before belongs to another game.
+    void ForgetGame() {
+        for (Mission& mission : g_missions) {
+            mission.running = false;
+            mission.started = false;
+            mission.blip = 0;
         }
     }
 
@@ -191,11 +306,16 @@ namespace {
             FindTriggers();
             triggersFound = true;
         }
-        ShowWaitingContacts(FollowTriggers());
+        FollowTriggers();
+        StartMissingTriggers();
+        FollowContactBlips();
+        ShowWaitingContacts();
     }
 }
 
 void Markers::Install() {
+    // initScriptsEvent follows CTheScripts::Init, which a new game, a loaded one and a restart all run.
+    plugin::Events::initScriptsEvent += ForgetGame;
     plugin::Events::gameProcessEvent += Process;
 }
 
@@ -206,15 +326,10 @@ void Markers::Unlock(unsigned char number) {
         return;
     }
     mission->unlocked = true;
-    Log::Write("Markers: unlocked mission " + std::to_string(number) + " (" + TitleKey(*mission) + ")");
+    Log::Write("Markers: unlocked mission " + Name(*mission));
 }
 
 bool Markers::IsPlayable(unsigned char number) {
     const Mission* mission = Find(number);
-    if (!mission) return true;
-    if (!mission->unlocked) return false;
-    for (CRunningScript* script = CTheScripts::pActiveScripts; script; script = script->m_pNext) {
-        if (MissionOf(*script) == mission) return true;
-    }
-    return false;
+    return !mission || (mission->unlocked && mission->running);
 }

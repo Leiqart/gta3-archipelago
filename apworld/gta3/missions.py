@@ -149,6 +149,21 @@ ISLAND_OPENERS = {
     SHORESIDE: "A Drop in the Ocean",
 }
 
+# The missions the story closes for good once another is passed, read in main.scm: their triggers end themselves if they are not passed yet, so the client checks them with the closer.
+CLOSES = {
+    # Last Requests ends the Mafia's work in Portland (g832).
+    "Last Requests": (
+        "Give Me Liberty", "Don't Spank Ma Bitch Up", "Drive Misty For Me", "Pump-Action Pimp", "The Fuzz Ball",
+        "Mike Lips Last Lunch", "Farewell 'Chunky' Lee Chong", "Van Heist", "Cipriani's Chauffeur", "Dead Skunk in the Trunk", "The Getaway",
+        "Taking Out the Laundry", "The Pick-Up", "Salvatore's Called a Meeting", "Triads and Tribulations", "Blow Fish",
+        "Chaperone", "Cutting the Grass", "Bomb Da Base: Act I", "Bomb Da Base: Act II",
+    ),
+    # Waka-Gashira Wipeout! kills Kenji (g1344).
+    "Waka-Gashira Wipeout!": ("Kanbu Bust-out", "Grand Theft Auto", "Deal Steal", "Shima", "Smack Down"),
+    # Grand Theft Aero ends Two-Faced Tanner (g1396).
+    "Grand Theft Aero": ("Two-Faced Tanner",),
+}
+
 # The last mission of the story: passing it wins the game.
 GOAL_MISSION = "The Exchange"
 
@@ -161,3 +176,13 @@ def unlock_item_name(mission: Mission) -> str:
 def contact_missions(contact: str) -> list[Mission]:
     """The missions a contact's progressive item unlocks, in order; Give Me Liberty is left out, as the intro starts it."""
     return [mission for mission in MISSIONS if mission.contact == contact and mission.unlock_id]
+
+
+def mission_named(name: str) -> Mission:
+    """A mission of the table, story or side, by its name."""
+    return next(mission for mission in ALL_MISSIONS if mission.name == name)
+
+
+def closer_of(name: str) -> str | None:
+    """The mission whose pass closes this one for good, if the story has one."""
+    return next((closer for closer, closed in CLOSES.items() if name in closed), None)

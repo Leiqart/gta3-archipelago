@@ -4,11 +4,13 @@ import Utils
 from CommonClient import CommonContext, get_base_parser, gui_enabled, handle_url_arg, logger, server_loop
 from NetUtils import ClientStatus
 
-from ..missions import ALL_MISSIONS, CONTACTS, GOAL_MISSION, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions
+from ..missions import ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions, mission_named
 from .mod_link import ModLink
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
 LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
+# The locations of the missions each closer's pass loses for good, by the closer's key: they are checked with it, as the game will never pass them.
+LOST_WITH_KEY = {mission_named(closer).key: [mission_named(name).location_id for name in closed] for closer, closed in CLOSES.items()}
 # What each unlock and progressive item unlocks: a mission's number in the game, which the mod's markers know.
 MISSION_OF_UNLOCK = {mission.unlock_id: mission.number for mission in MISSIONS if mission.unlock_id}
 CHAIN_OF_PROGRESSIVE = {contact.progressive_id: [mission.number for mission in contact_missions(contact.name)] for contact in CONTACTS}
@@ -26,7 +28,7 @@ class GTA3Context(CommonContext):
         super().__init__(server_address, password)
         self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_items_to_mod)
 
-    # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has; the goal mission's also wins.
+    # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has; a closer's also sends the missions it loses, the goal mission's also wins.
     async def on_mod_check(self, key: str) -> None:
         location_id = LOCATION_OF_KEY.get(key)
         if location_id is None:
@@ -37,8 +39,17 @@ class GTA3Context(CommonContext):
             return
         if not await self.check_locations([location_id]):
             logger.info(f"Check {key} not sent: already checked or unknown location")
+        if key in LOST_WITH_KEY:
+            await self.check_lost_missions(key)
         if key == GOAL_KEY:
             await self.send_goal()
+
+    # Checks the missions this closer's pass has lost for good; those already passed are already checked, and the room ignores them.
+    async def check_lost_missions(self, key: str) -> None:
+        sent = await self.check_locations(LOST_WITH_KEY[key])
+        if sent:
+            names = ", ".join(self.location_names.lookup_in_slot(location_id) for location_id in sorted(sent))
+            logger.info(f"Mission {key} closed {len(sent)} missions of the story, checked too: {names}")
 
     # Tells the room our slot has reached its goal: it announces it and, depending on the room's settings, releases our remaining items; sending it again changes nothing.
     async def send_goal(self) -> None:

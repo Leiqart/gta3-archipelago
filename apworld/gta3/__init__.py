@@ -1,8 +1,8 @@
 from BaseClasses import Item, ItemClassification, Location, Region
 from worlds.AutoWorld import World
 from worlds.LauncherComponents import Component, Type, components, launch_subprocess
-from .missions import (ALL_MISSIONS, CONTACTS, GOAL_MISSION, ISLAND_OPENERS, MISSIONS, MONEY_ID, MONEY_ITEM, PORTLAND, SHORESIDE, STAUNTON,
-                       Mission, contact_missions, unlock_item_name)
+from .missions import (ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, ISLAND_OPENERS, MISSIONS, MONEY_ID, MONEY_ITEM, PORTLAND, SHORESIDE, STAUNTON,
+                       Mission, closer_of, contact_missions, mission_named, unlock_item_name)
 from .options import GTA3Options, MissionOrder
 
 
@@ -24,9 +24,9 @@ class GTA3Location(Location):
     game = "Grand Theft Auto III"
 
 
-# The event the logic uses for an island: an event location the opening mission makes reachable, holding an event item of the same name.
-def island_event(island: str) -> str:
-    return f"{island} Open"
+# The event the logic uses for a mission that changes the story (it opens an island or closes missions): an event location reached with it, holding an event item of the same name.
+def passed_event(mission: str) -> str:
+    return f"{mission} Passed"
 
 
 class GTA3World(World):
@@ -56,17 +56,17 @@ class GTA3World(World):
         for mission in ALL_MISSIONS:
             region = regions[mission.island]
             region.locations.append(GTA3Location(self.player, mission.name, mission.location_id, region))
-        # Each island's event sits in the region of the mission that opens it, and is reached with that mission.
-        for island, opener in ISLAND_OPENERS.items():
-            region = regions[self.mission(opener).island]
-            event = GTA3Location(self.player, island_event(island), None, region)
-            event.place_locked_item(GTA3Item(island_event(island), ItemClassification.progression, None, self.player))
-            event.access_rule = lambda state, opener=opener: state.can_reach(opener, "Location", self.player)
+        # Each mission that opens an island or closes others gets its event, in its own region and reached with it.
+        for name in dict.fromkeys([*ISLAND_OPENERS.values(), *CLOSES]):
+            region = regions[mission_named(name).island]
+            event = GTA3Location(self.player, passed_event(name), None, region)
+            event.place_locked_item(GTA3Item(passed_event(name), ItemClassification.progression, None, self.player))
+            event.access_rule = lambda state, name=name: state.can_reach(name, "Location", self.player)
             region.locations.append(event)
         self.multiworld.regions += regions.values()
         regions["Menu"].connect(regions[PORTLAND])
-        regions[PORTLAND].connect(regions[STAUNTON], rule=lambda state: state.has(island_event(STAUNTON), self.player))
-        regions[STAUNTON].connect(regions[SHORESIDE], rule=lambda state: state.has(island_event(SHORESIDE), self.player))
+        regions[PORTLAND].connect(regions[STAUNTON], rule=lambda state: state.has(passed_event(ISLAND_OPENERS[STAUNTON]), self.player))
+        regions[STAUNTON].connect(regions[SHORESIDE], rule=lambda state: state.has(passed_event(ISLAND_OPENERS[SHORESIDE]), self.player))
 
     # One item per story mission but Give Me Liberty, which the intro starts: its unlock in free mode, its contact's progressive item in ordered mode; money fills the other locations.
     def create_items(self) -> None:
@@ -83,9 +83,16 @@ class GTA3World(World):
             self.multiworld.get_location(mission.name, self.player).access_rule = self.mission_rule(mission)
         self.multiworld.completion_condition[self.player] = lambda state: state.can_reach(GOAL_MISSION, "Location", self.player)
 
-    # A mission needs its unlock (free) or as many copies of its contact's progressive item as its place in the contact's order (ordered); its island comes from its region.
-    # Ordered mode also follows the story: the missions whose pass starts its trigger come first. Free mode plays any unlocked mission, as the mod starts its trigger itself.
+    # A mission the story can close is reached by playing it, or by passing the mission that closes it: the client then checks it too.
     def mission_rule(self, mission: Mission):
+        play = self.play_rule(mission)
+        closer = closer_of(mission.name)
+        if not closer:
+            return play
+        return lambda state: play(state) or state.has(passed_event(closer), self.player)
+
+    # Playing a mission needs its unlock (free mode, where the mod starts any trigger), or its contact's progressive items up to its place and the missions whose pass starts its trigger (ordered mode); its island comes from its region.
+    def play_rule(self, mission: Mission):
         requires = () if self.options.mission_order == MissionOrder.option_free else mission.requires
         if not mission.unlock_id:
             return lambda state: all(state.can_reach(name, "Location", self.player) for name in requires)
@@ -95,8 +102,3 @@ class GTA3World(World):
             contact = next(contact for contact in CONTACTS if contact.name == mission.contact)
             item, count = contact.progressive_item, contact_missions(contact.name).index(mission) + 1
         return lambda state: state.has(item, self.player, count) and all(state.can_reach(name, "Location", self.player) for name in requires)
-
-    # A mission of the table, by its name.
-    @staticmethod
-    def mission(name: str) -> Mission:
-        return next(mission for mission in ALL_MISSIONS if mission.name == name)

@@ -20,6 +20,7 @@
 #include "common.h"
 #include "extensions/ScriptCommands.h"
 #include "../Log.h"
+#include "../Options.h"
 #include "Actions.h"
 #include "Steps.h"
 
@@ -415,7 +416,7 @@ Steps::Action Steps::SailTo(CVector place, std::vector<int> charGlobals) {
 
 Steps::Action Steps::EnsureMoney(int amount) {
     return [amount] {
-        if (Command<Commands::IS_SCORE_GREATER>(CWorld::PlayerInFocus, amount - 1)) return;
+        if (!Options::NeedMoney() || Command<Commands::IS_SCORE_GREATER>(CWorld::PlayerInFocus, amount - 1)) return;
         Command<Commands::ADD_SCORE>(CWorld::PlayerInFocus, amount);
         Log::Write("Gave the player $" + std::to_string(amount));
     };

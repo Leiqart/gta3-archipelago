@@ -203,7 +203,7 @@ namespace Steps {
     Action BoardScriptCar(int carGlobal);
     // Action: teleports the player's boat to a place, carrying the characters the script keeps in these globals on its deck; nothing once within 3 m.
     Action SailTo(CVector place, std::vector<int> charGlobals);
-    // Action: gives the player this much money when they have less, as a mission that charges it requires.
+    // Action: gives the player this much money when they have less, as a mission that charges it requires; nothing when the slot's need_money is off, as the mod waives the fee.
     Action EnsureMoney(int amount);
     // Action: moves the clock to a few minutes before the hour and minute the script keeps in these globals, when it is still further away.
     Action ClockToScriptTime(int hourGlobal, int minuteGlobal, int minutesBefore);

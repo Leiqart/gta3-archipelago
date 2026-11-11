@@ -732,7 +732,7 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
         }},
         // The Exchange: once the ransom is paid the player is left unarmed among Catalina's men, healed here as her men are killed (Maria and Catalina spared).
         // Her helicopter (g17192) only sets off once the player leaves the dam; each area reached then creates the next gang, the last one Maria and Catalina, who takes off.
-        {.script = "cat1", .passedFlag = 1472, .start = kExchangeMarker, .steps = {
+        {.script = "cat1", .passedFlag = 1472, .start = kExchangeMarker, .beforeStart = EnsureMoney(500000), .steps = {
             {"get out of the dam to the small dam (zone WEE_DAM)", AllOf(Marked(BLIP_CAR), PlayerNear(kSmallDam, 5.0f)), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kSmallDam))), 60},
             {"follow the helicopter to the first gang's area", PlayerNear(kCatalinasFirstArea, 5.0f), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kCatalinasFirstArea))), 60},
             {"follow the helicopter to Catalina's hideout", PlayerNear(kCatalinasHideout, 5.0f), Both(KeepAlive, Both(KillScriptChars(kCatalinasGang), GoTo(kCatalinasHideout))), 60},

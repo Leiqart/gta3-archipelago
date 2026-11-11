@@ -72,6 +72,10 @@ class ModLink:
     def send_status(self) -> None:
         self.send("status connected" if self.room_connected else "status disconnected")
 
+    # Sends one of our slot's options to the mod, by its name in the YAML and its value as a number ("option need_money 0").
+    def send_option(self, name: str, value: int) -> None:
+        self.send(f"option {name} {value}")
+
     # Sends one received item to the mod: its position in our slot's list, what it does in the game ("unlock 24", "money 10000", "none 0") and its name.
     def send_item(self, index: int, effect: str, value: int, name: str) -> None:
         self.send(f"item {index} {effect} {value} {name}")

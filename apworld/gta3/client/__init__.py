@@ -26,7 +26,9 @@ class GTA3Context(CommonContext):
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
-        self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_items_to_mod)
+        self.mod = ModLink(on_check=self.on_mod_check, on_mod_connected=self.send_slot_to_mod)
+        # Our slot's options the mod plays by, from the room's slot data; empty until the room has connected us.
+        self.slot_options: dict[str, int] = {}
 
     # Called by ModLink for each "check <key>" line: sends the location of that mission to the room, which ignores ids it already has; a closer's also sends the missions it loses, the goal mission's also wins.
     async def on_mod_check(self, key: str) -> None:
@@ -71,6 +73,12 @@ class GTA3Context(CommonContext):
         copy = sum(1 for item in self.items_received[:index + 1] if item.item == item_id)
         return ("unlock", chain[copy - 1]) if copy <= len(chain) else ("none", 0)
 
+    # Relays to the mod, when it connects, everything of our slot it plays by: the options known so far, then every item received.
+    def send_slot_to_mod(self) -> None:
+        for name, value in self.slot_options.items():
+            self.mod.send_option(name, value)
+        self.send_items_to_mod()
+
     # Relays to the mod the items our slot has received, from this position in the list to its end, each with its effect and its name.
     def send_items_to_mod(self, start: int = 0) -> None:
         for index in range(start, len(self.items_received)):
@@ -94,6 +102,10 @@ class GTA3Context(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         super().on_package(cmd, args)
         if cmd == "Connected":
+            # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed).
+            self.slot_options = {"need_money": int(args["slot_data"].get("need_money", True))}
+            for name, value in self.slot_options.items():
+                self.mod.send_option(name, value)
             self.mod.set_room_connected(True)
         elif cmd == "ReceivedItems":
             self.send_items_to_mod(args["index"])

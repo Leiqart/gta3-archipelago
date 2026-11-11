@@ -1,9 +1,11 @@
 #include <cstring>
+#include <initializer_list>
 #include <string>
 #include "plugin.h"
 #include "CTheScripts.h"
 #include "Log.h"
 #include "MainScript.h"
+#include "Options.h"
 #include "Story.h"
 
 namespace {
@@ -42,10 +44,26 @@ namespace {
         lock = 0;
         Log::Write("Story: cleared Salvatore's lock (g1088), set by Cutting the Grass or Bomb Da Base: Act I");
     }
+
+    // The flags that say a fee is paid: Bomb Da Base: Act II only starts once 8-Ball has $100000 or is paid (g24), The Exchange's trigger once Catalina has $500000 or is paid (g1684), and each takes the money only while unpaid.
+    constexpr unsigned short kEightBallPaid = 24;
+    constexpr unsigned short kCatalinaPaid = 1684;
+
+    // need_money off: both are paid already, so neither mission asks for its money nor takes it; main.scm clears the flags at a new game's start, so they are set again on every frame.
+    void WaiveFees() {
+        if (Options::NeedMoney()) return;
+        for (const unsigned short paid : {kEightBallPaid, kCatalinaPaid}) *reinterpret_cast<int*>(CTheScripts::ScriptSpace + paid) = 1;
+    }
+
+    // Runs once per frame, after the scripts.
+    void Process() {
+        KeepSalvatoreFree();
+        WaiveFees();
+    }
 }
 
 void Story::Install() {
     // initScriptsEvent follows CTheScripts::Init, which a new game, a loaded one and a restart all run, once main.scm is loaded.
     plugin::Events::initScriptsEvent += ReleasePause;
-    plugin::Events::gameProcessEvent += KeepSalvatoreFree;
+    plugin::Events::gameProcessEvent += Process;
 }

@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "Markers.h"
 #include "Message.h"
+#include "Options.h"
 
 namespace {
     // How many items of our slot's list this game has applied: an item sent again after a reconnection is not applied twice.
@@ -21,13 +22,13 @@ namespace {
     }
 
     // One "item <index> <effect> <value> <name>" line: a new item is applied and shown; one this game already applied is skipped.
-    void HandleLine(const std::string& line) {
+    void HandleItem(const std::string& line) {
         std::istringstream words(line);
         std::string command, effect, name;
         int index = -1, value = 0;
         words >> command >> index >> effect >> value;
         std::getline(words >> std::ws, name);
-        if (command != "item" || index < 0) {
+        if (index < 0) {
             Log::Write("Unknown message from the client: " + line);
             return;
         }
@@ -39,6 +40,17 @@ namespace {
         }
         Log::Write("Received item " + std::to_string(index) + ": " + name + " (" + effect + " " + std::to_string(value) + ")");
         Message::Show("Received: " + name);
+    }
+
+    // One line of what the room gives our slot: an item, or one of our slot's options ("option <name> <value>").
+    void HandleLine(const std::string& line) {
+        std::istringstream words(line);
+        std::string command, name;
+        int value = 0;
+        words >> command;
+        if (command == "item") HandleItem(line);
+        else if (command == "option" && words >> name >> value) Options::Set(name, value);
+        else Log::Write("Unknown message from the client: " + line);
     }
 
     // Runs once per frame: applies what the client sent since the last frame.

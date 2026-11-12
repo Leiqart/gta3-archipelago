@@ -1,7 +1,7 @@
 from BaseClasses import Item, ItemClassification, Location, Region
 from worlds.AutoWorld import World
 from worlds.LauncherComponents import Component, Type, components, launch_subprocess
-from .items import ITEM_NAMED, ITEMS, MONEY
+from .items import ITEM_NAMED, ITEMS, MONEY, WEAPONS
 from .missions import (ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, ISLAND_OPENERS, MISSIONS, PORTLAND, SHORESIDE, STAUNTON,
                        Mission, closer_of, contact_missions, mission_named, unlock_item_name)
 from .options import GTA3Options, MissionOrder
@@ -42,7 +42,7 @@ class GTA3World(World):
     location_name_to_id = {mission.name: mission.location_id for mission in ALL_MISSIONS}
     item_name_to_id = {item.name: item.id for item in ITEMS}
 
-    # Builds one item, classified as items.py says: the money is the only filler, every unlock is used in a rule so it is progression.
+    # Builds one item, classified as items.py says: every unlock is used in a rule so it is progression, a weapon's license is useful, the money is filler.
     def create_item(self, name: str) -> GTA3Item:
         item = ITEM_NAMED[name]
         return GTA3Item(name, ItemClassification[item.classification], item.id, self.player)
@@ -65,21 +65,26 @@ class GTA3World(World):
         regions[PORTLAND].connect(regions[STAUNTON], rule=lambda state: state.has(passed_event(ISLAND_OPENERS[STAUNTON]), self.player))
         regions[STAUNTON].connect(regions[SHORESIDE], rule=lambda state: state.has(passed_event(ISLAND_OPENERS[SHORESIDE]), self.player))
 
-    # One item per story mission but Give Me Liberty, which the intro starts: its unlock in free mode, its contact's progressive item in ordered mode; money fills the other locations.
+    # One item per story mission but Give Me Liberty, which the intro starts: its unlock in free mode, its contact's progressive item in ordered mode.
+    # The weapons' licenses take the other locations as far as there is room, money what is left.
     def create_items(self) -> None:
         if self.options.mission_order == MissionOrder.option_free:
             names = [unlock_item_name(mission) for mission in MISSIONS if mission.unlock_id]
         else:
             names = [contact.progressive_item for contact in CONTACTS for _ in contact_missions(contact.name)]
+        self.weapons = WEAPONS[:len(ALL_MISSIONS) - len(names)]
+        names += [weapon.name for weapon in self.weapons]
         names += [MONEY.name] * (len(ALL_MISSIONS) - len(names))
         self.multiworld.itempool += [self.create_item(name) for name in names]
 
-    # What the client needs of our slot's options: whether missions ask for their money (the logic counts no money either way), and the DeathLink settings.
+    # What the client needs of our slot: whether missions ask for their money (the logic counts no money either way), the DeathLink settings,
+    # and the weapons that are items in it, by their number in the game: the mod keeps the shops from selling those before their license.
     def fill_slot_data(self) -> dict:
         return {
             "need_money": bool(self.options.need_money),
             "death_link": bool(self.options.death_link),
             "arrest_is_death": bool(self.options.arrest_is_death),
+            "weapon_items": [weapon.values[0] for weapon in self.weapons],
         }
 
     # Each mission gets its rule; passing The Exchange, the end of the story, wins.

@@ -9,7 +9,7 @@ An [Archipelago](https://archipelago.gg) multiworld integration for classic **Gr
 ## How it plays
 
 - **Checks**: every story mission (65), and 8 side missions open from the start on their island: the four RC Toyz missions, the three 4x4 challenges and Multistorey Mayhem.
-- **Items**: what unlocks each story mission, and $10000 cash for the rest. A locked mission's marker is hidden in the game; once unlocked, its marker shows on the radar and on the ground.
+- **Items**: what unlocks each story mission, and a license for each of nine weapons the shops sell (Uzi, shotgun, AK-47, M-16, sniper rifle, rocket launcher, flamethrower, Molotov cocktail, grenade). A locked mission's marker is hidden in the game; once unlocked, its marker shows on the radar and on the ground. A shop shows a weapon out of stock until you receive its license; the pistol and the body armour are sold as in the game.
 - **Any order**: the mod starts the marker of an unlocked mission itself when the story has not, one mission per marker at a time, and takes off the story's locks that only hold for some order (the pause between Salvatore's Called a Meeting and Chaperone, and Salvatore's lock between his missions).
 - **Islands**: they open as in the game. Staunton Island once Last Requests is passed, Shoreside Vale once A Drop in the Ocean is.
 - **Missions the story closes**: once Last Requests is passed, the Mafia's missions left in Portland can never be played; Waka-Gashira Wipeout! does the same to Kenji's, Grand Theft Aero to Two-Faced Tanner. Their checks are sent with the mission that closes them.

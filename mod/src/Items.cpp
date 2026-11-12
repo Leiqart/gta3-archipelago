@@ -7,15 +7,17 @@
 #include "Log.h"
 #include "Markers.h"
 #include "Message.h"
+#include "Shops.h"
 
 namespace {
     // How many items of our slot's list this game has applied: an item sent again after a reconnection is not applied twice.
     int g_applied = 0;
 
-    // Does what the client says an item does: unlock a mission by its number, or add money; false for an effect this mod does not know.
+    // Does what the client says an item does: unlock a mission by its number, add money, or let the shops sell a weapon by its number; false for an effect this mod does not know.
     bool Apply(const std::string& effect, int value) {
         if (effect == "unlock") Markers::Unlock(static_cast<unsigned char>(value));
         else if (effect == "money") CWorld::Players[CWorld::PlayerInFocus].m_nMoney += value;
+        else if (effect == "weapon") Shops::Unlock(value);
         else if (effect != "none") return false;
         return true;
     }

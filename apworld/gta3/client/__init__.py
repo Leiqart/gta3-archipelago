@@ -27,6 +27,8 @@ class GTA3Context(CommonContext):
         self.mod = ModLink(on_check=self.on_mod_check, on_death=self.on_mod_death, on_mod_connected=self.send_slot_to_mod)
         # Our slot's options the mod plays by, from the room's slot data; empty until the room has connected us.
         self.slot_options: dict[str, int] = {}
+        # The weapons that are items in our slot, by their number in the game, from the room's slot data; None until the room has connected us.
+        self.weapon_items: list[int] | None = None
         # Whether being busted sends a death to the DeathLink players, as the slot data says.
         self.arrest_is_death = True
 
@@ -76,9 +78,15 @@ class GTA3Context(CommonContext):
 
     # Relays to the mod, when it connects, everything of our slot it plays by: the options known so far, then every item received.
     def send_slot_to_mod(self) -> None:
+        self.send_options_to_mod()
+        self.send_items_to_mod()
+
+    # Relays to the mod what the room's slot data says of how our slot plays, once the room has said it: each option, then the weapons that are items.
+    def send_options_to_mod(self) -> None:
         for name, value in self.slot_options.items():
             self.mod.send_option(name, value)
-        self.send_items_to_mod()
+        if self.weapon_items is not None:
+            self.mod.send_weapons(self.weapon_items)
 
     # Relays to the mod the items our slot has received, from this position in the list to its end, each with what items.py says it does in the game and its name:
     # the whole list when the mod connects, the new ones as the room gives them.
@@ -104,13 +112,13 @@ class GTA3Context(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         super().on_package(cmd, args)
         if cmd == "Connected":
-            # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed, no DeathLink).
+            # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed, no DeathLink, every weapon sold as the story says).
             slot_data = args["slot_data"]
             self.slot_options = {"need_money": int(slot_data.get("need_money", True))}
+            self.weapon_items = [int(weapon) for weapon in slot_data.get("weapon_items", [])]
             self.arrest_is_death = bool(slot_data.get("arrest_is_death", True))
             Utils.async_start(self.update_death_link(bool(slot_data.get("death_link", False))), name="update death link")
-            for name, value in self.slot_options.items():
-                self.mod.send_option(name, value)
+            self.send_options_to_mod()
             self.mod.set_room_connected(True)
         elif cmd == "ReceivedItems":
             self.send_items_to_mod(args["index"])

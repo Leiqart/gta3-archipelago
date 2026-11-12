@@ -84,7 +84,11 @@ class ModLink:
     def send_option(self, name: str, value: int) -> None:
         self.send(f"option {name} {value}")
 
-    # Sends one received item to the mod: its position in our slot's list, what it does in the game ("unlock 24", "money 10000", "none 0") and its name.
+    # Tells the mod which weapons are items in our slot, by their number in the game ("weapons 3 4 5"; "weapons" alone for none): a shop sells each one only once its item is received.
+    def send_weapons(self, weapons: list[int]) -> None:
+        self.send(" ".join(["weapons", *map(str, weapons)]))
+
+    # Sends one received item to the mod: its position in our slot's list, what it does in the game ("unlock 24", "money 10000", "weapon 3", "none 0") and its name.
     def send_item(self, index: int, effect: str, value: int, name: str) -> None:
         self.send(f"item {index} {effect} {value} {name}")
 

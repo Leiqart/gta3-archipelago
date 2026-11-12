@@ -10,16 +10,31 @@ class ItemData:
     """An item of the apworld: what the room calls it, and what the game gets when our slot receives it."""
     name: str
     id: int
-    # How Archipelago treats it, in its own words: "progression" (the logic needs it to reach locations) or "filler".
+    # How Archipelago treats it, in its own words: "progression" (the logic needs it to reach locations), "useful" (worth having, the logic does not need it) or "filler".
     classification: str
-    # What the mod does with it, in the words of docs/protocol.md: "unlock" a mission by its number, or give "money".
+    # What the mod does with it, in the words of docs/protocol.md: "unlock" a mission by its number, give "money", or let the shops sell a "weapon" by its number.
     effect: str
-    # What each copy gives, in the order our slot receives them (mission numbers, or an amount): the nth copy gives the nth value, a copy past the last gives the last again.
+    # What each copy gives, in the order our slot receives them (mission numbers, an amount, or a weapon's number): the nth copy gives the nth value, a copy past the last gives the last again.
     values: tuple[int, ...]
 
 
 # The filler item, given in the game as money.
 MONEY = ItemData("$10000", 2, "filler", "money", (10000,))
+
+# The weapons the shops sell that are items: a shop shows one out of stock until our slot has received its license.
+# Each value is the game's number for the weapon, plugin-sdk's eWeaponType (enums/eWeaponType.h), named at the end of its line.
+# The pistol and the body armour are sold as in the game: with them, the licenses would be more than the 9 locations the missions' unlocks leave (see docs/apworld-notes.md).
+WEAPONS = [
+    ItemData("Uzi License", 80, "useful", "weapon", (3,)),                 # WEAPONTYPE_UZI
+    ItemData("Shotgun License", 81, "useful", "weapon", (4,)),             # WEAPONTYPE_SHOTGUN
+    ItemData("AK-47 License", 82, "useful", "weapon", (5,)),               # WEAPONTYPE_AK47
+    ItemData("M-16 License", 83, "useful", "weapon", (6,)),                # WEAPONTYPE_M16
+    ItemData("Sniper Rifle License", 84, "useful", "weapon", (7,)),        # WEAPONTYPE_SNIPERRIFLE
+    ItemData("Rocket Launcher License", 85, "useful", "weapon", (8,)),     # WEAPONTYPE_ROCKETLAUNCHER
+    ItemData("Flamethrower License", 86, "useful", "weapon", (9,)),        # WEAPONTYPE_FLAMETHROWER
+    ItemData("Molotov Cocktail License", 87, "useful", "weapon", (10,)),   # WEAPONTYPE_MOLOTOV
+    ItemData("Grenade License", 88, "useful", "weapon", (11,)),            # WEAPONTYPE_GRENADE
+]
 
 # Every item of the apworld. Their numbers are stable, like the locations' (see missions.py): never renumber them, never reuse a retired one.
 ITEMS = [
@@ -29,6 +44,7 @@ ITEMS = [
       for contact in CONTACTS),
     # Free mode: each story mission's own unlock; Give Me Liberty has none, as the intro starts it.
     *(ItemData(unlock_item_name(mission), mission.unlock_id, "progression", "unlock", (mission.number,)) for mission in MISSIONS if mission.unlock_id),
+    *WEAPONS,
 ]
 
 ITEM_NAMED = {item.name: item for item in ITEMS}

@@ -1,7 +1,8 @@
 from BaseClasses import Item, ItemClassification, Location, Region
 from worlds.AutoWorld import World
 from worlds.LauncherComponents import Component, Type, components, launch_subprocess
-from .missions import (ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, ISLAND_OPENERS, MISSIONS, MONEY_ID, MONEY_ITEM, PORTLAND, SHORESIDE, STAUNTON,
+from .items import ITEM_NAMED, ITEMS, MONEY
+from .missions import (ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, ISLAND_OPENERS, MISSIONS, PORTLAND, SHORESIDE, STAUNTON,
                        Mission, closer_of, contact_missions, mission_named, unlock_item_name)
 from .options import GTA3Options, MissionOrder
 
@@ -37,18 +38,14 @@ class GTA3World(World):
     options_dataclass = GTA3Options
     options: GTA3Options
 
-    # Stable numbers shared by the server, the client and the mod, all read from missions.py.
+    # Stable numbers shared by the server, the client and the mod, read from missions.py (the locations) and items.py (the items).
     location_name_to_id = {mission.name: mission.location_id for mission in ALL_MISSIONS}
-    item_name_to_id = {
-        MONEY_ITEM: MONEY_ID,
-        **{contact.progressive_item: contact.progressive_id for contact in CONTACTS},
-        **{unlock_item_name(mission): mission.unlock_id for mission in MISSIONS if mission.unlock_id},
-    }
+    item_name_to_id = {item.name: item.id for item in ITEMS}
 
-    # Builds one item; the money is the only filler, every unlock is used in a rule so it is progression.
+    # Builds one item, classified as items.py says: the money is the only filler, every unlock is used in a rule so it is progression.
     def create_item(self, name: str) -> GTA3Item:
-        classification = ItemClassification.filler if name == MONEY_ITEM else ItemClassification.progression
-        return GTA3Item(name, classification, self.item_name_to_id[name], self.player)
+        item = ITEM_NAMED[name]
+        return GTA3Item(name, ItemClassification[item.classification], item.id, self.player)
 
     # The map: Menu leads to Portland, which leads to Staunton Island once Last Requests is passed, which leads to Shoreside Vale once A Drop in the Ocean is.
     def create_regions(self) -> None:
@@ -74,7 +71,7 @@ class GTA3World(World):
             names = [unlock_item_name(mission) for mission in MISSIONS if mission.unlock_id]
         else:
             names = [contact.progressive_item for contact in CONTACTS for _ in contact_missions(contact.name)]
-        names += [MONEY_ITEM] * (len(ALL_MISSIONS) - len(names))
+        names += [MONEY.name] * (len(ALL_MISSIONS) - len(names))
         self.multiworld.itempool += [self.create_item(name) for name in names]
 
     # What the client needs of our slot's options: whether missions ask for their money (the logic counts no money either way), and the DeathLink settings.

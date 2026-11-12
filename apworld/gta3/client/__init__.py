@@ -4,16 +4,14 @@ import Utils
 from CommonClient import CommonContext, get_base_parser, gui_enabled, handle_url_arg, logger, server_loop
 from NetUtils import ClientStatus
 
-from ..missions import ALL_MISSIONS, CLOSES, CONTACTS, GOAL_MISSION, MISSIONS, MONEY_AMOUNT, MONEY_ID, contact_missions, mission_named
+from ..items import effects_of
+from ..missions import ALL_MISSIONS, CLOSES, GOAL_MISSION, mission_named
 from .mod_link import ModLink
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
 LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
 # The locations of the missions each closer's pass loses for good, by the closer's key: they are checked with it, as the game will never pass them.
 LOST_WITH_KEY = {mission_named(closer).key: [mission_named(name).location_id for name in closed] for closer, closed in CLOSES.items()}
-# What each unlock and progressive item unlocks: a mission's number in the game, which the mod's markers know.
-MISSION_OF_UNLOCK = {mission.unlock_id: mission.number for mission in MISSIONS if mission.unlock_id}
-CHAIN_OF_PROGRESSIVE = {contact.progressive_id: [mission.number for mission in contact_missions(contact.name)] for contact in CONTACTS}
 # The key the game registers when the goal mission is passed: its check also tells the room our slot has won.
 GOAL_KEY = next(mission.key for mission in ALL_MISSIONS if mission.name == GOAL_MISSION)
 
@@ -76,31 +74,18 @@ class GTA3Context(CommonContext):
         self.finished_game = True
         logger.info(f"Goal reached: {GOAL_MISSION} is passed")
 
-    # What an item does in the game, as the mod applies it: ("unlock", mission number), ("money", amount), or ("none", 0).
-    # A progressive item unlocks its contact's next mission: the nth copy received, counted up to this index, unlocks the nth mission.
-    def item_effect(self, index: int) -> tuple[str, int]:
-        item_id = self.items_received[index].item
-        if item_id == MONEY_ID:
-            return "money", MONEY_AMOUNT
-        if item_id in MISSION_OF_UNLOCK:
-            return "unlock", MISSION_OF_UNLOCK[item_id]
-        chain = CHAIN_OF_PROGRESSIVE.get(item_id)
-        if chain is None:
-            return "none", 0
-        copy = sum(1 for item in self.items_received[:index + 1] if item.item == item_id)
-        return ("unlock", chain[copy - 1]) if copy <= len(chain) else ("none", 0)
-
     # Relays to the mod, when it connects, everything of our slot it plays by: the options known so far, then every item received.
     def send_slot_to_mod(self) -> None:
         for name, value in self.slot_options.items():
             self.mod.send_option(name, value)
         self.send_items_to_mod()
 
-    # Relays to the mod the items our slot has received, from this position in the list to its end, each with its effect and its name.
+    # Relays to the mod the items our slot has received, from this position in the list to its end, each with what items.py says it does in the game and its name:
+    # the whole list when the mod connects, the new ones as the room gives them.
     def send_items_to_mod(self, start: int = 0) -> None:
-        for index in range(start, len(self.items_received)):
-            effect, value = self.item_effect(index)
-            self.mod.send_item(index, effect, value, self.item_names.lookup_in_slot(self.items_received[index].item))
+        received = [item.item for item in self.items_received]
+        for index, effect, value in effects_of(received, start):
+            self.mod.send_item(index, effect, value, self.item_names.lookup_in_slot(received[index]))
 
     # Gives the client window its own title.
     def make_gui(self):

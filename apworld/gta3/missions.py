@@ -50,11 +50,6 @@ CONTACTS = [
     Contact("Catalina", "Progressive Catalina Mission", 17),
 ]
 
-# The filler item, given in the game as money.
-MONEY_ITEM = "$10000"
-MONEY_ID = 2
-MONEY_AMOUNT = 10000
-
 # Every story mission, each contact's in story order (the order its progressive item unlocks them). The requires come from main.scm:
 # the mission whose passed routine runs START_NEW_SCRIPT for its trigger, or for the phone script that starts it (El Burro, King Courtney, D-Ice).
 # Pump-Action Pimp, The Fuzz Ball, Dead Skunk in the Trunk and The Getaway also require Chaperone, as in the story; the mod takes off the pause their triggers take between Salvatore's Called a Meeting and Chaperone.

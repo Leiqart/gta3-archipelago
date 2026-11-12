@@ -1,9 +1,34 @@
+#include <algorithm>
+#include <string>
+#include <vector>
 #include "Actions.h"
 #include "Sheets.h"
 
 using namespace Steps;
 
 namespace {
+    // A mission whose pass closes others for good in the story, by the flag their triggers read, and the scripts of the missions it closes; the client checks those with it.
+    struct Closer {
+        int flag;
+        std::vector<std::string> scripts;
+    };
+
+    // Last Requests ends the Mafia's work in Portland (g832), Waka-Gashira Wipeout! kills Kenji (g1344), Grand Theft Aero ends Two-Faced Tanner (g1396).
+    const Closer kClosers[] = {
+        {832, {"eight", "luigi2", "luigi3", "luigi4", "luigi5", "joey1", "joey2", "joey3", "joey4", "joey5", "joey6",
+               "toni1", "toni2", "toni3", "toni4", "toni5", "frank1", "frank2", "frank21", "frank3"}},
+        {1344, {"kenji1", "kenji2", "kenji3", "kenji4", "kenji5"}},
+        {1396, {"asuka5"}},
+    };
+
+    // True once the story has closed this mission for good: it can never be played again.
+    bool Closed(const std::string& script) {
+        for (const Closer& closer : kClosers) {
+            if (Actions::ScriptGlobal(closer.flag) == 1 && std::find(closer.scripts.begin(), closer.scripts.end(), script) != closer.scripts.end()) return true;
+        }
+        return false;
+    }
+
     // Give Me Liberty dresses Claude back from the prison outfit the intro gave him (PLAYERP): later cutscenes crash on the prison model.
     void AfterGiveMeLiberty() {
         Actions::DressPlayer("PLAYER");
@@ -887,7 +912,7 @@ const std::vector<Sheets::Sheet>& Sheets::Run() {
 
 bool Sheets::Done(const Sheet& sheet) {
     if (sheet.done) return sheet.done();
-    return Actions::ScriptGlobal(sheet.passedFlag) == 1 || (sheet.laterPassedFlag && Actions::ScriptGlobal(sheet.laterPassedFlag) == 1);
+    return Actions::ScriptGlobal(sheet.passedFlag) == 1 || (sheet.laterPassedFlag && Actions::ScriptGlobal(sheet.laterPassedFlag) == 1) || Closed(sheet.script);
 }
 
 const Sheets::Sheet* Sheets::Find(const std::string& script) {

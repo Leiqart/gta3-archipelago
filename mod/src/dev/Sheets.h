@@ -23,7 +23,7 @@ namespace Sheets {
         int startModel = 0;
         // True for a job started with the side mission button in its vehicle (Paramedic, Firefighter, Vigilante, Taxi Driver).
         bool startWithButton = false;
-        // The island a side mission is played on, which the story opens before it can be played there: 0 Portland, 1 Staunton Island (Last Requests), 2 Shoreside Vale (A Drop in the Ocean).
+        // The island a side mission is played on, which the story opens before it can be played there: 0 Portland, 1 Staunton Island (Last Requests), 2 Shoreside Vale (A Drop in the Ocean); a story mission's comes from its start marker.
         int island = 0;
         // Done before walking into the marker, like setting the clock for a mission that only starts at some hours; empty when nothing.
         Steps::Action beforeStart;
@@ -35,7 +35,7 @@ namespace Sheets {
 
     // Every sheet, in story order: the order of the test run.
     const std::vector<Sheet>& Run();
-    // True once the sheet's mission is passed for good: its done goal if it has one, else its passed flag or later passed flag.
+    // True once the sheet's mission is passed for good, or closed for good by the story: its done goal if it has one, else its passed flag or later passed flag, or its closer's.
     bool Done(const Sheet& sheet);
     // The sheet of a mission, by its SCRIPT_NAME, the first not done when several share it (a job played on each island); nullptr for a mission the run does not play, like the intro.
     const Sheet* Find(const std::string& script);

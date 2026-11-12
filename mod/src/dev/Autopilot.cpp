@@ -19,6 +19,7 @@
 #include "CPools.h"
 #include "CRunningScript.h"
 #include "CTheScripts.h"
+#include "CTheZones.h"
 #include "CTimer.h"
 #include "CVehicle.h"
 #include "CWanted.h"
@@ -294,10 +295,18 @@ namespace {
     int g_onMarkerSince = 0;
 
     // Between missions: walks into the marker of the next sheet not passed yet; returns true when it acted.
-    // True when the story has opened the sheet's island: Last Requests opens Staunton Island (g1084), A Drop in the Ocean Shoreside Vale (g1348).
+    // The island a sheet is played on, 0 Portland, 1 Staunton Island, 2 Shoreside Vale: a side mission's sheet says it, else the game's level of its start marker tells it (a bridge counts as Portland).
+    int Island(const Sheets::Sheet& sheet) {
+        if (sheet.island || !sheet.start) return sheet.island;
+        const int level = CTheZones::GetLevelFromPosition(*sheet.start);
+        return level == STAUNTON_ISLAND ? 1 : level == SHORESIDE_VALE ? 2 : 0;
+    }
+
+    // True when the story has opened the sheet's island, as a player could not reach it before: Last Requests opens Staunton Island (g1084), A Drop in the Ocean Shoreside Vale (g1348).
     bool IslandOpen(const Sheets::Sheet& sheet) {
-        if (sheet.island == 1) return Actions::ScriptGlobal(1084) == 1;
-        if (sheet.island == 2) return Actions::ScriptGlobal(1348) == 1;
+        const int island = Island(sheet);
+        if (island == 1) return Actions::ScriptGlobal(1084) == 1;
+        if (island == 2) return Actions::ScriptGlobal(1348) == 1;
         return true;
     }
 

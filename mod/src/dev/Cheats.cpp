@@ -11,6 +11,7 @@
 #include "Autopilot.h"
 #include "Cheats.h"
 #include "Settings.h"
+#include "ShopTest.h"
 
 namespace {
     // With mute=1: the master volumes go to 0 every frame, because the game sets them again from the menu's settings (which stay as saved).
@@ -32,6 +33,7 @@ namespace {
             Actions::Say(L"Cheat: position written to the log");
         }
         Autopilot::Update();
+        ShopTest::Update();
         // The keys do nothing during a cutscene, or while a mission script has taken control of the player.
         if (CCutsceneMgr::ms_running || CPad::GetPad(0)->DisablePlayerControls) return;
         if (KeyCheck::CheckJustDown(VK_F5) && !Actions::GoToMissionBlip()) Actions::Say(L"Cheat: no mission blip");

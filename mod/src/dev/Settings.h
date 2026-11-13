@@ -25,4 +25,6 @@ namespace Settings {
     bool First(const std::string& script);
     // pass=toni3: sheets forced to pass at their launch like those before start_at, to reach a state of the story without playing them. Default: none.
     bool Passes(const std::string& script);
+    // shop_test=1: every 20 s of free play, the player walks onto the Uzi of Portland's Ammu-Nation with $10000, and the log says whether the game sold it (ShopTest.h). Default: off.
+    bool ShopTest();
 }

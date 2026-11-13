@@ -6,18 +6,24 @@ from CommonClient import logger
 # The door the mod knocks on: this PC only, port 2727.
 HOST = "127.0.0.1"
 PORT = 2727
+# The values the client keeps for our slot between sessions, in its save file: the player's money, and how many items of the slot's list its games applied.
+# The client sends each one to the mod in a line of its own ("money 12000", "given_index 5"); the mod sends both back together ("progress 5 12000").
+KEPT = ("money", "given_index")
 
 
 class ModLink:
     """Local server that GTA III's mod connects to; every message is one text line (see docs/protocol.md)."""
 
-    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_death: Callable[[str], Awaitable[None]], on_mod_connected: Callable[[], None]) -> None:
+    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_death: Callable[[str], Awaitable[None]], on_progress: Callable[[int, int], Awaitable[None]],
+                 on_mod_connected: Callable[[], None]) -> None:
         # Called with the mission's text key each time the mod sends "check <key>"; ModLink does not know what it does.
         self.on_check = on_check
-        # Called each time the mod connects, right after the room state, so the context sends it every item received so far.
+        # Called each time the mod connects, right before the room state, so the context sends it everything of our slot first.
         self.on_mod_connected = on_mod_connected
         # Called with "wasted" or "busted" each time the mod sends "death <how>".
         self.on_death = on_death
+        # Called with the count of items applied and the money each time the mod sends "progress <given_index> <money>", both read on the same frame of the game.
+        self.on_progress = on_progress
         self.room_connected = False
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.Server | None = None
@@ -38,14 +44,14 @@ class ModLink:
         if self.server:
             self.server.close()
 
-    # Runs once per mod connection: tells the mod the room state, then handles its lines until the game closes.
+    # Runs once per mod connection: tells the mod everything of our slot, then the room state, then handles its lines until the game closes.
     async def handle_mod(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         if self.writer:
             self.writer.close()
         self.writer = writer
         logger.info("GTA III connected")
-        self.send_status()
         self.on_mod_connected()
+        self.send_status()
         try:
             while line := await reader.readline():
                 await self.handle_line(line.decode("utf-8", errors="replace").strip())
@@ -64,6 +70,8 @@ class ModLink:
             await self.on_check(words[1])
         elif len(words) == 2 and words[0] == "death":
             await self.on_death(words[1])
+        elif len(words) == 3 and words[0] == "progress" and words[1].isdecimal() and words[2].isdecimal():
+            await self.on_progress(int(words[1]), int(words[2]))
         else:
             logger.warning(f"Unknown message from GTA III: {line}")
 
@@ -79,6 +87,14 @@ class ModLink:
     # Tells the mod another DeathLink player died, by their name: the mod kills the player.
     def send_kill(self, name: str) -> None:
         self.send(f"kill {name}")
+
+    # Sends the mod one value kept from our slot's earlier sessions ("money 12000", "given_index 5"): a game that starts takes it.
+    def send_kept(self, name: str, value: int) -> None:
+        self.send(f"{name} {value}")
+
+    # Tells the mod the effects of the consumable items ("consumables money"): a game that starts skips those an earlier session applied.
+    def send_consumables(self, effects: list[str]) -> None:
+        self.send(" ".join(["consumables", *effects]))
 
     # Sends one of our slot's options to the mod, by its name in the YAML and its value as a number ("option need_money 0").
     def send_option(self, name: str, value: int) -> None:

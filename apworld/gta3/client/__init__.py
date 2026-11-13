@@ -1,12 +1,14 @@
 import asyncio
+import json
+import os
 
 import Utils
 from CommonClient import CommonContext, get_base_parser, gui_enabled, handle_url_arg, logger, server_loop
 from NetUtils import ClientStatus
 
-from ..items import effects_of
+from ..items import CONSUMABLE_EFFECTS, effects_of
 from ..missions import ALL_MISSIONS, CLOSES, GOAL_MISSION, mission_named
-from .mod_link import ModLink
+from .mod_link import KEPT, ModLink
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
 LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
@@ -14,6 +16,10 @@ LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
 LOST_WITH_KEY = {mission_named(closer).key: [mission_named(name).location_id for name in closed] for closer, closed in CLOSES.items()}
 # The key the game registers when the goal mission is passed: its check also tells the room our slot has won.
 GOAL_KEY = next(mission.key for mission in ALL_MISSIONS if mission.name == GOAL_MISSION)
+# The folder, in Archipelago's own, of the files that keep what a slot's sessions leave for the next one.
+SAVES_FOLDER = "gta3_saves"
+# How often, in seconds, the saver compares what the game has with what the save file has, besides each "progress" line of the mod.
+SAVE_EVERY = 30
 
 
 class GTA3Context(CommonContext):
@@ -24,9 +30,17 @@ class GTA3Context(CommonContext):
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
-        self.mod = ModLink(on_check=self.on_mod_check, on_death=self.on_mod_death, on_mod_connected=self.send_slot_to_mod)
+        self.mod = ModLink(on_check=self.on_mod_check, on_death=self.on_mod_death, on_progress=self.on_mod_progress, on_mod_connected=self.send_slot_to_mod)
         # Our slot's options the mod plays by, from the room's slot data; empty until the room has connected us.
         self.slot_options: dict[str, int] = {}
+        # Our slot's values (see KEPT) as the game has them now, and as its save file has them: the saver writes the file when they differ.
+        # Both None until the room has connected us: the mod hears nothing of the room before.
+        self.kept: dict[str, int] | None = None
+        self.saved: dict[str, int] | None = None
+        # The save file of the room and slot the client is connected to; None before.
+        self.save_file: str | None = None
+        # The seed of the room, from its RoomInfo: the save file's name starts with it, so each room has its own.
+        self.room_seed: str | None = None
         # The weapons that are items in our slot, by their number in the game, from the room's slot data; None until the room has connected us.
         self.weapon_items: list[int] | None = None
         # Whether being busted sends a death to the DeathLink players, as the slot data says.
@@ -65,6 +79,51 @@ class GTA3Context(CommonContext):
             return
         await self.send_death(f"{self.player_names[self.slot]} was {how} in Liberty City")
 
+    # Our slot's save file, in Archipelago's folder: one per room (its seed), team and slot, so that a new room starts from nothing.
+    def save_path(self) -> str:
+        return Utils.user_path(SAVES_FOLDER, f"{self.room_seed}_{self.team}_{self.slot}.json")
+
+    # What our slot's save file keeps: no file (or none known), an unreadable one, or a value that is no whole number of 0 or more, counts as 0.
+    def load_kept(self) -> dict[str, int]:
+        try:
+            with open(self.save_file, encoding="utf-8") as file:
+                saved = json.load(file)
+        except (OSError, TypeError, ValueError):
+            saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+        values = {name: saved.get(name) for name in KEPT}
+        return {name: value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0 for name, value in values.items()}
+
+    # Compares what the game has with what the save file has: nothing to do when they are the same; otherwise writes the file whole, one change or several at once,
+    # into a new file first, then in place of the old one, so that a client closed while writing leaves the previous file.
+    def save_if_changed(self) -> None:
+        if self.kept is None or self.save_file is None or self.kept == self.saved:
+            return
+        os.makedirs(os.path.dirname(self.save_file), exist_ok=True)
+        with open(self.save_file + ".tmp", "w", encoding="utf-8") as file:
+            json.dump(self.kept, file)
+        os.replace(self.save_file + ".tmp", self.save_file)
+        self.saved = dict(self.kept)
+        logger.info("Saved for the next session: " + ", ".join(f"{name} {value}" for name, value in self.kept.items()))
+
+    # Runs in the background while the client is open: every SAVE_EVERY seconds, writes the save file if what the game has changed.
+    async def saver(self) -> None:
+        while not self.exit_event.is_set():
+            try:
+                await asyncio.wait_for(self.exit_event.wait(), SAVE_EVERY)
+            except asyncio.TimeoutError:
+                pass
+            self.save_if_changed()
+
+    # Called by ModLink for each "progress <given_index> <money>" line: what the game has now, both values read on the same frame; the count of items applied only grows.
+    async def on_mod_progress(self, applied: int, money: int) -> None:
+        if self.kept is None:
+            logger.info(f"Progress {applied} {money} not kept: not connected to the room")
+            return
+        self.kept = {"money": money, "given_index": max(applied, self.kept["given_index"])}
+        self.save_if_changed()
+
     # A DeathLink player died elsewhere: the client logs it as usual, and the mod kills the player.
     def on_deathlink(self, data: dict) -> None:
         super().on_deathlink(data)
@@ -76,8 +135,14 @@ class GTA3Context(CommonContext):
         self.finished_game = True
         logger.info(f"Goal reached: {GOAL_MISSION} is passed")
 
-    # Relays to the mod, when it connects, everything of our slot it plays by: the options known so far, then every item received.
+    # Relays to the mod everything of our slot it plays by, once the room has connected us: the consumable effects and the kept values first, as a game takes them before its items,
+    # then the options, then every item received.
     def send_slot_to_mod(self) -> None:
+        if self.kept is None:
+            return
+        self.mod.send_consumables(CONSUMABLE_EFFECTS)
+        for name in KEPT:
+            self.mod.send_kept(name, self.kept[name])
         self.send_options_to_mod()
         self.send_items_to_mod()
 
@@ -108,24 +173,35 @@ class GTA3Context(CommonContext):
         await self.get_username()
         await self.send_connect()
 
-    # Reacts to the room's messages: "Connected" means our slot is ready, "ReceivedItems" brings items from this index on (0 resends them all).
+    # Reacts to the room's messages: "RoomInfo" names the room, before anything else; "Connected" means our slot is ready, "ReceivedItems" brings items from this index on (0 resends them all).
     def on_package(self, cmd: str, args: dict) -> None:
         super().on_package(cmd, args)
-        if cmd == "Connected":
+        if cmd == "RoomInfo":
+            self.room_seed = args.get("seed_name")
+        elif cmd == "Connected":
             # A slot generated before an option existed has none in its slot data: it plays the game's way (money needed, no DeathLink, every weapon sold as the story says).
             slot_data = args["slot_data"]
             self.slot_options = {"need_money": int(slot_data.get("need_money", True))}
             self.weapon_items = [int(weapon) for weapon in slot_data.get("weapon_items", [])]
             self.arrest_is_death = bool(slot_data.get("arrest_is_death", True))
             Utils.async_start(self.update_death_link(bool(slot_data.get("death_link", False))), name="update death link")
-            self.send_options_to_mod()
+            # The save file of this room and slot, read before the mod hears of the room: a game must not start without it. The mod then gets our whole slot, and the room state last.
+            if not self.room_seed:
+                logger.error("The room did not say its seed: nothing is kept between sessions")
+            self.save_file = self.save_path() if self.room_seed else None
+            self.kept = self.load_kept()
+            self.saved = dict(self.kept)
+            logger.info("Kept from this slot's earlier sessions: " + ", ".join(f"{name} {value}" for name, value in self.kept.items()))
+            self.send_slot_to_mod()
             self.mod.set_room_connected(True)
-        elif cmd == "ReceivedItems":
+        elif cmd == "ReceivedItems" and self.kept is not None:
             self.send_items_to_mod(args["index"])
 
-    # Runs whenever the link to the room is lost, whatever the reason.
+    # Runs whenever the link to the room is lost, whatever the reason: what the game had is saved first, and the save file is read again when the room connects us again, maybe to another slot.
     async def connection_closed(self) -> None:
+        self.save_if_changed()
         await super().connection_closed()
+        self.kept = self.saved = None
         self.mod.set_room_connected(False)
 
 
@@ -136,11 +212,15 @@ def launch(*launch_args: str) -> None:
         ctx.auth = args.name
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         await ctx.mod.start()
+        saver = asyncio.create_task(ctx.saver(), name="saver")
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
         await ctx.exit_event.wait()
+        await saver
         ctx.mod.stop()
+        # What the game had last, in case the saver's last turn came before it.
+        ctx.save_if_changed()
         await ctx.shutdown()
 
     Utils.init_logging("GTA3Client", exception_logger="Client")

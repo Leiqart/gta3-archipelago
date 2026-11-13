@@ -16,10 +16,12 @@ class ItemData:
     effect: str
     # What each copy gives, in the order our slot receives them (mission numbers, an amount, or a weapon's number): the nth copy gives the nth value, a copy past the last gives the last again.
     values: tuple[int, ...]
+    # True for an item the game uses up (money): a game applies it once, and a later game skips it, as the room keeps what it gave. A lasting one (a mission, a weapon) is applied by every game.
+    consumable: bool = False
 
 
 # The filler item, given in the game as money.
-MONEY = ItemData("$10000", 2, "filler", "money", (10000,))
+MONEY = ItemData("$10000", 2, "filler", "money", (10000,), consumable=True)
 
 # The weapons the shops sell that are items: a shop shows one out of stock until our slot has received its license.
 # Each value is the game's number for the weapon, plugin-sdk's eWeaponType (enums/eWeaponType.h), named at the end of its line.
@@ -49,6 +51,11 @@ ITEMS = [
 
 ITEM_NAMED = {item.name: item for item in ITEMS}
 ITEM_OF_ID = {item.id: item for item in ITEMS}
+
+# The effects of the consumable items, which the client tells the mod: the mod only sees effects, so an effect belongs to consumable items only, or to lasting ones only.
+CONSUMABLE_EFFECTS = sorted({item.effect for item in ITEMS if item.consumable})
+if set(CONSUMABLE_EFFECTS) & {item.effect for item in ITEMS if not item.consumable}:
+    raise ValueError("items.py: an effect belongs both to consumable items and to lasting ones")
 
 
 def effects_of(received: Sequence[int], start: int = 0) -> list[tuple[int, str, int]]:

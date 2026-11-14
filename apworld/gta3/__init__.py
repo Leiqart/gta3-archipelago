@@ -71,13 +71,15 @@ class GTA3World(World):
         regions[STAUNTON].connect(regions[SHORESIDE], rule=lambda state: state.has(passed_event(ISLAND_OPENERS[SHORESIDE]), self.player))
 
     # One item per story mission but Give Me Liberty, which the intro starts: its unlock in free mode, its contact's progressive item in ordered mode.
-    # The weapons' licenses take the other locations as far as there is room, money what is left.
+    # The weapons' licenses take the other locations as far as there is room, money what is left. Each location the player excludes holds only filler, so it takes
+    # the place of a license, from the last one back: that weapon is then sold as in the game. Past the 9 locations the unlocks leave, other games' filler has to fill them.
     def create_items(self) -> None:
         if self.options.mission_order == MissionOrder.option_free:
             names = [unlock_item_name(mission) for mission in MISSIONS if mission.unlock_id]
         else:
             names = [contact.progressive_item for contact in CONTACTS for _ in contact_missions(contact.name)]
-        self.weapons = WEAPONS[:len(ALL_MISSIONS) - len(names)]
+        excluded = len(self.options.exclude_locations.value)
+        self.weapons = WEAPONS[:max(0, len(ALL_MISSIONS) - len(names) - excluded)]
         names += [weapon.name for weapon in self.weapons]
         names += [self.get_filler_item_name() for _ in range(len(ALL_MISSIONS) - len(names))]
         self.multiworld.itempool += [self.create_item(name) for name in names]

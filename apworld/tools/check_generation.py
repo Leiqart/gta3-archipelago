@@ -1,5 +1,6 @@
 """Generates GTA III rooms for every combination of the options and checks each spoiler: what fills the 73 locations, and what the player starts with.
-Then a few multiworld rooms: GTA III with A Short Hike (shipped with Archipelago), and two GTA III slots in one room.
+Then excluded locations (each takes the place of a license; more than 9 cannot be filled by GTA III alone), and a few multiworld rooms:
+GTA III with A Short Hike (shipped with Archipelago), and two GTA III slots in one room.
 
 Usage: python apworld/tools/check_generation.py
 Install the apworld first (apworld/build.cmd): the generator uses the one in custom_worlds. Archipelago is ARCHIPELAGO_DIR, else C:/ProgramData/Archipelago.
@@ -109,10 +110,16 @@ for order, need_money, death_link, (start_name, start) in itertools.product(("or
     starting = re.search(r"Start Inventory from Pool:\s*(.*)", spoiler)
     check(name, dict(kinds) == expected, f"placed {dict(kinds)}, start from pool: {starting.group(1).strip() if starting else '-'}")
 
-# --- Excluded locations: alone, none of our items may go there (no filler in the pool); with another game, its filler can.
+# --- Excluded locations: each one takes the place of a license, so that a $10000 goes there; past 9, a room of GTA III alone cannot fill them.
 excluded = ["Multistorey Mayhem", "Gripped!"]
 code, spoiler, output = generate("solo-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded)}, 2001)
-check("solo room with 2 excluded locations fails (known: no filler in the pool)", code != 0, output.strip().splitlines()[-1][:160] if code else "it generated")
+placed = placed_solo(spoiler) if code == 0 else {}
+check("solo room with 2 excluded locations: a $10000 on each, 7 licenses left",
+      code == 0 and all(placed.get(location) == "$10000" for location in excluded) and Counter(kind(item) for item in placed.values())["license"] == 7,
+      {location: placed.get(location) for location in excluded} if code == 0 else output.strip().splitlines()[-1][:160])
+many = [mission.name for mission in missions.SIDE_MISSIONS] + ["The Crook", "The Thieves"]
+code, spoiler, output = generate("solo-excluded-10", {"GTA3.yaml": gta_yaml("Leiqart", "free", False, False, {}, many)}, 2005)
+check(f"solo room with {len(many)} excluded locations, more than the 9 the unlocks leave, cannot be filled", code != 0, "it generated" if code == 0 else "")
 hike = "name: Hiker\ngame: A Short Hike\nA Short Hike: {}\n"
 code, spoiler, output = generate("with-hike-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded), "Hike.yaml": hike}, 2002)
 lines = [line.strip() for line in spoiler.splitlines() if any(line.startswith(f"{location} (Leiqart): ") for location in excluded)]

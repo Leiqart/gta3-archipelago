@@ -9,8 +9,8 @@
 #include "Markers.h"
 #include "Menu.h"
 #include "Missions.h"
-#include "Money.h"
 #include "Options.h"
+#include "Player.h"
 #include "Shops.h"
 #include "Story.h"
 #ifdef GTA3AP_DEV
@@ -53,7 +53,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         Options::Install();
         Shops::Install();
         Items::Install();
-        Money::Install();
+        Player::Install();
         Deaths::Install();
 #ifdef GTA3AP_DEV
         Cheats::Install(folder);

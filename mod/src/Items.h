@@ -5,6 +5,6 @@
 namespace Items {
     // Takes the client's "consumables", "given_index" and "item" lines and applies the items not applied yet; call it once, from DllMain.
     void Install();
-    // How many items of the slot's list its games have applied so far, this one and the earlier ones: what the save file must keep, with the money (Money sends both).
+    // How many items of the slot's list its games have applied so far, this one and the earlier ones: what the save file must keep, with the player's state (Player sends both).
     int Applied();
 }

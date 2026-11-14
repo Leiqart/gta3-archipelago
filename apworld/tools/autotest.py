@@ -1,15 +1,16 @@
 """Plays a test run in the real game with nothing to start by hand: generates a room from apworld/players, hosts it on port 38300, opens GTA3 Client and a dev build of GTA III,
 waits for the run to end, then stops everything and sums up the game's log.
 
-Usage: python apworld/tools/autotest.py [--shop | --money]
+Usage: python apworld/tools/autotest.py [--shop | --player]
   (default)  the dev build's autopilot plays the test missions with the settings of GTA3Archipelago-dev.ini, until it has passed all it can or is stuck.
   --shop     the shop check (shop_test=1, nobody plays): the player walks onto the Uzi of Portland's Ammu-Nation without its license, the room sends it, then again with it.
-  --money    two sessions, nobody plays: the room sends $10000 in the first; the second, with a new client and a new game, must start with that money from the client's save file,
-             skip that item, and add the next $10000.
+  --player   two sessions, nobody plays: the room sends $10000 in the first, then the client's save file gets a health, an armour and an Uzi; the second, with a new client and a new game,
+             must start with all of it, skip the first $10000, and add the next one.
 The game is the one mod/build.cmd installs into (GTA3_GAME, else dist/live-game-test/game), with a dev build (mod/build.cmd dev); Archipelago is ARCHIPELAGO_DIR, else C:/ProgramData/Archipelago.
 GTA3 Client must be closed first: the mod reaches the client on port 2727. The run takes the screen; do not touch the game until it ends.
 The dev settings file is changed for the run (run_in_background=1, or the check's settings) and put back afterwards, whatever happens."""
 import argparse
+import json
 import os
 import shutil
 import socket
@@ -27,7 +28,7 @@ LOG = GAME / "scripts" / "GTA3Archipelago.log"
 # Not host.cmd's 38281, so a room it hosts can stay open.
 PORT = "38300"
 # The longest a run may take: a whole run of the autopilot, and each check, which ends once its rounds are done.
-LONGEST = {"run": 3 * 3600, "shop": 10 * 60, "money": 15 * 60}
+LONGEST = {"run": 3 * 3600, "shop": 10 * 60, "player": 15 * 60}
 # The checks' settings: nobody plays, and the game goes on without the focus.
 CHECK_SETTINGS = "play=0\nrun_in_background=1\nmute=1\nquit_on_stuck=0\nquit_when_done=0\n"
 SHOP_RESULTS = ("the Uzi was bought", "no Uzi bought")
@@ -134,25 +135,65 @@ def shop_check(run: Run, deadline: float) -> int | None:
     return gta.poll()
 
 
-# The money check: a first session gets $10000 from the room's console and reports it; a second one, with a new client and a new game, must start with it, then gets $10000 more.
-def money_check(run: Run, deadline: float) -> int | None:
-    sends = f"/send {run.slot} $10000"
+# The state the player check writes into the save file between its two sessions, as the second must restore it: a health, an armour, and an Uzi (3) with its ammo, in hand.
+PLAYER_STATE = {"health": 57, "armour": 33, "in_hand": 3, "weapons": [[3, 77]]}
+
+
+# The client's save file of this room: its name starts with the room's seed, the number in the room's file name.
+def save_file(room: Path) -> Path | None:
+    saves = sorted((ARCHIPELAGO / "gta3_saves").glob(room.stem.removeprefix("AP_") + "_*.json"))
+    return saves[0] if saves else None
+
+
+# The player check: a first session gets $10000 from the room's console and saves it; the save file then gets PLAYER_STATE; a second session, with a new client and a new game,
+# must start with both, skip the first $10000, then get $10000 more. A game gives the saved state, and reports, once the player is free: after the intro, which nobody skips here.
+def player_check(run: Run, room: Path, deadline: float) -> int | None:
     for session in (1, 2):
         client, gta = run.open_session()
-        started = wait_for(("Money: the game starts with",), 0, deadline, gta)
+        started = wait_for(("Player: the game starts with", "Player: nothing saved yet"), 0, deadline, gta)
         if started < 0:
-            print(f"Session {session}: the game never took the room's money")
+            print(f"Session {session}: the game never took the saved state")
             return gta.poll()
-        # The items the client sends after the money come within a few frames.
+        # The items the client sends after the state come within a few frames.
         time.sleep(5)
-        run.console(sends)
-        if wait_for(("Money: $",), started + 1, deadline, gta) < 0:
-            print(f"Session {session}: the money the room sent never reached the client")
-        # Time for the client to keep it in the room before both close.
+        run.console(f"/send {run.slot} $10000")
+        if wait_for((f"Player: progress sent, given_index={session} ",), started + 1, deadline, gta) < 0:
+            print(f"Session {session}: the game never reported the $10000")
+        # Time for the client to write the save file before both close.
         time.sleep(3)
         run.end(gta, client)
         shutil.copy2(LOG, OUT / f"GTA3Archipelago-session{session}.log")
+        save = save_file(room)
+        if session == 1 and save:
+            kept = json.loads(save.read_text(encoding="utf-8"))
+            kept["player"].update(PLAYER_STATE)
+            save.write_text(json.dumps(kept), encoding="utf-8")
+            print("Between the sessions, the save file holds:", json.dumps(kept))
     return 0
+
+
+# The player check's verdict: what each session's log and the save file must say.
+def player_verdict(room: Path) -> None:
+    def log(session: int) -> list[str]:
+        path = OUT / f"GTA3Archipelago-session{session}.log"
+        return path.read_text(encoding="utf-8", errors="replace").splitlines() if path.exists() else []
+
+    first, second = log(1), log(2)
+    has = lambda lines, *parts: any(all(part in line for part in parts) for line in lines)
+    save = save_file(room)
+    kept = json.loads(save.read_text(encoding="utf-8")) if save else {}
+    verdicts = [
+        ("session 1 starts from nothing saved", has(first, "Player: nothing saved yet")),
+        ("session 1 reports the $10000", has(first, "Player: progress sent, given_index=1 ", "money=10000")),
+        ("session 2 starts with the saved $10000", has(second, "Player: the game starts with the $10000")),
+        ("session 2 restores health, armour and the Uzi in hand", has(second, "Player: restored", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
+        ("session 2 skips the first $10000", has(second, "Items: item 0", "the save file kept its money")),
+        ("session 2 reports $20000 with the Uzi", has(second, "Player: progress sent, given_index=2 ", "money=20000", "weapon=3:77")),
+        ("the save file ends with $20000, 2 items and the Uzi", kept.get("given_index") == 2 and kept.get("player", {}).get("money") == 20000 and [3, 77] in kept.get("player", {}).get("weapons", [])),
+    ]
+    for what, ok in verdicts:
+        print("ok  " if ok else "FAIL", what)
+    print("The save file:", json.dumps(kept))
 
 
 # What the game's log says of the run: why it ended, the missions passed, the items received, and the checks' lines.
@@ -167,7 +208,7 @@ def sum_up(lines: list[str], exit_code: int | None, mode: str) -> None:
     passed = [line.split("(")[-1].rstrip(")") for line in lines if line.startswith("Mission passed:")]
     print(f"{len(passed)} missions passed:", ", ".join(passed) or "none")
     for line in lines:
-        if line.startswith(("Shop test", "Shops:", "Money:", "Items:", "Received item")) or any(word in line for word in ("stuck", "crashed", "all test missions")):
+        if line.startswith(("Shop test", "Shops:", "Player:", "Items:", "Received item")) or any(word in line for word in ("stuck", "crashed", "all test missions")):
             print("  ", line)
 
 
@@ -175,9 +216,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     choice = parser.add_mutually_exclusive_group()
     choice.add_argument("--shop", action="store_true", help="check that a shop sells a weapon only with its license")
-    choice.add_argument("--money", action="store_true", help="check that the room keeps the money from one session to the next")
+    choice.add_argument("--player", action="store_true", help="check that the client's save file keeps the player's state from one session to the next")
     arguments = parser.parse_args()
-    mode = "shop" if arguments.shop else "money" if arguments.money else "run"
+    mode = "shop" if arguments.shop else "player" if arguments.player else "run"
     if port_in_use(2727):
         raise SystemExit("Port 2727 is in use: close GTA3 Client first")
     if not (GAME / "gta3.exe").exists() or not INI.exists():
@@ -199,8 +240,8 @@ def main() -> None:
         deadline = time.time() + LONGEST[mode]
         if mode == "shop":
             exit_code = shop_check(run, deadline)
-        elif mode == "money":
-            exit_code = money_check(run, deadline)
+        elif mode == "player":
+            exit_code = player_check(run, room, deadline)
         else:
             _, gta = run.open_session()
             try:
@@ -212,16 +253,14 @@ def main() -> None:
         shutil.copy2(backup, INI)
         if LOG.exists():
             shutil.copy2(LOG, OUT / "GTA3Archipelago.log")
-    print(f"Ran {int(time.time() - started) // 60} min")
-    if mode == "money":
+    print(f"Ran {int(time.time() - started)} s")
+    if mode == "player":
         for session in (1, 2):
             path = OUT / f"GTA3Archipelago-session{session}.log"
             print(f"--- session {session}")
             sum_up(path.read_text(encoding="utf-8", errors="replace").splitlines() if path.exists() else [], exit_code, mode)
-        # The client's save file of this room: its name starts with the room's seed, the number in the room's file name.
-        seed = room.stem.removeprefix("AP_")
-        for save in sorted((ARCHIPELAGO / "gta3_saves").glob(f"{seed}_*.json")):
-            print(f"--- the client's save file {save}:", save.read_text(encoding="utf-8"))
+        print("--- verdict")
+        player_verdict(room)
     else:
         sum_up(log_lines(), exit_code, mode)
     print("Dev settings put back; the run's files are in", OUT)

@@ -6,15 +6,53 @@ from CommonClient import logger
 # The door the mod knocks on: this PC only, port 2727.
 HOST = "127.0.0.1"
 PORT = 2727
-# The values the client keeps for our slot between sessions, in its save file: the player's money, and how many items of the slot's list its games applied.
-# The client sends each one to the mod in a line of its own ("money 12000", "given_index 5"); the mod sends both back together ("progress 5 12000").
-KEPT = ("money", "given_index")
+# The player's state the client keeps for our slot between sessions, in its save file, as numbers; the weapons held come with it, each with its ammo.
+PLAYER_NUMBERS = ("money", "health", "armour", "in_hand")
+# The weapons a player can hold, by their number in the game (eWeaponType): 1, the bat, to 12, the detonator.
+WEAPON_NUMBERS = range(1, 13)
+
+
+def clean_player(raw: object) -> dict:
+    """The player's state from a save file or a line, keeping only what is valid: whole numbers of 0 or more, and weapons as [number, ammo] of a weapon the player can hold."""
+    def number(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+    if not isinstance(raw, dict):
+        return {}
+    player = {name: raw[name] for name in PLAYER_NUMBERS if number(raw.get(name))}
+    weapons = raw.get("weapons", [])
+    if isinstance(weapons, list):
+        player["weapons"] = [[weapon[0], weapon[1]] for weapon in weapons
+                             if isinstance(weapon, list) and len(weapon) == 2 and number(weapon[0]) and weapon[0] in WEAPON_NUMBERS and number(weapon[1])]
+    return player
+
+
+def player_words(player: dict) -> list[str]:
+    """The player's state as the protocol writes it: "money=12000", ..., then "weapon=3:250" for each weapon."""
+    return [f"{name}={player[name]}" for name in PLAYER_NUMBERS if name in player] + [f"weapon={weapon}:{ammo}" for weapon, ammo in player.get("weapons", [])]
+
+
+def read_words(words: list[str]) -> dict | None:
+    """The values of "key=value" words, as player_words and the mod write them, with "given_index" among them; None if a word is none of them."""
+    values: dict = {"weapons": []}
+    for word in words:
+        key, _, value = word.partition("=")
+        if key == "weapon":
+            weapon, _, ammo = value.partition(":")
+            if not (weapon.isdecimal() and ammo.isdecimal()):
+                return None
+            values["weapons"].append([int(weapon), int(ammo)])
+        elif key in (*PLAYER_NUMBERS, "given_index") and value.isdecimal():
+            values[key] = int(value)
+        else:
+            return None
+    return values
 
 
 class ModLink:
     """Local server that GTA III's mod connects to; every message is one text line (see docs/protocol.md)."""
 
-    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_death: Callable[[str], Awaitable[None]], on_progress: Callable[[int, int], Awaitable[None]],
+    def __init__(self, on_check: Callable[[str], Awaitable[None]], on_death: Callable[[str], Awaitable[None]], on_progress: Callable[[int, dict], Awaitable[None]],
                  on_mod_connected: Callable[[], None]) -> None:
         # Called with the mission's text key each time the mod sends "check <key>"; ModLink does not know what it does.
         self.on_check = on_check
@@ -22,7 +60,7 @@ class ModLink:
         self.on_mod_connected = on_mod_connected
         # Called with "wasted" or "busted" each time the mod sends "death <how>".
         self.on_death = on_death
-        # Called with the count of items applied and the money each time the mod sends "progress <given_index> <money>", both read on the same frame of the game.
+        # Called with the count of items applied and the player's state each time the mod sends "progress given_index=<count> money=<amount> ...", all read on the same frame of the game.
         self.on_progress = on_progress
         self.room_connected = False
         self.writer: asyncio.StreamWriter | None = None
@@ -70,8 +108,8 @@ class ModLink:
             await self.on_check(words[1])
         elif len(words) == 2 and words[0] == "death":
             await self.on_death(words[1])
-        elif len(words) == 3 and words[0] == "progress" and words[1].isdecimal() and words[2].isdecimal():
-            await self.on_progress(int(words[1]), int(words[2]))
+        elif words[0] == "progress" and (values := read_words(words[1:])) is not None and "given_index" in values:
+            await self.on_progress(values.pop("given_index"), clean_player(values))
         else:
             logger.warning(f"Unknown message from GTA III: {line}")
 
@@ -88,9 +126,13 @@ class ModLink:
     def send_kill(self, name: str) -> None:
         self.send(f"kill {name}")
 
-    # Sends the mod one value kept from our slot's earlier sessions ("money 12000", "given_index 5"): a game that starts takes it.
-    def send_kept(self, name: str, value: int) -> None:
-        self.send(f"{name} {value}")
+    # Tells the mod how many items of our slot's list its earlier sessions applied ("given_index 5"), from the save file.
+    def send_given_index(self, count: int) -> None:
+        self.send(f"given_index {count}")
+
+    # Sends the mod the player's state kept from our slot's earlier sessions ("player money=12000 health=100 ... weapon=3:250"; "player" alone for none): a game that starts takes it.
+    def send_player(self, player: dict) -> None:
+        self.send(" ".join(["player", *player_words(player)]))
 
     # Tells the mod the effects of the consumable items ("consumables money"): a game that starts skips those an earlier session applied.
     def send_consumables(self, effects: list[str]) -> None:

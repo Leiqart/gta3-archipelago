@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import os
 
@@ -8,7 +9,7 @@ from NetUtils import ClientStatus
 
 from ..items import CONSUMABLE_EFFECTS, effects_of
 from ..missions import ALL_MISSIONS, CLOSES, GOAL_MISSION, mission_named
-from .mod_link import KEPT, ModLink
+from .mod_link import ModLink, clean_player, player_words
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
 LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
@@ -33,10 +34,10 @@ class GTA3Context(CommonContext):
         self.mod = ModLink(on_check=self.on_mod_check, on_death=self.on_mod_death, on_progress=self.on_mod_progress, on_mod_connected=self.send_slot_to_mod)
         # Our slot's options the mod plays by, from the room's slot data; empty until the room has connected us.
         self.slot_options: dict[str, int] = {}
-        # Our slot's values (see KEPT) as the game has them now, and as its save file has them: the saver writes the file when they differ.
+        # What our slot keeps between sessions, {"given_index": <count>, "player": <state>}, as the game has it now, and as its save file has it: the saver writes the file when they differ.
         # Both None until the room has connected us: the mod hears nothing of the room before.
-        self.kept: dict[str, int] | None = None
-        self.saved: dict[str, int] | None = None
+        self.kept: dict | None = None
+        self.saved: dict | None = None
         # The save file of the room and slot the client is connected to; None before.
         self.save_file: str | None = None
         # The seed of the room, from its RoomInfo: the save file's name starts with it, so each room has its own.
@@ -83,8 +84,8 @@ class GTA3Context(CommonContext):
     def save_path(self) -> str:
         return Utils.user_path(SAVES_FOLDER, f"{self.room_seed}_{self.team}_{self.slot}.json")
 
-    # What our slot's save file keeps: no file (or none known), an unreadable one, or a value that is no whole number of 0 or more, counts as 0.
-    def load_kept(self) -> dict[str, int]:
+    # What our slot's save file keeps: no file (or none known) or an unreadable one keeps nothing, given_index 0 and an empty state; a value that is not valid is left out (see clean_player).
+    def load_kept(self) -> dict:
         try:
             with open(self.save_file, encoding="utf-8") as file:
                 saved = json.load(file)
@@ -92,8 +93,13 @@ class GTA3Context(CommonContext):
             saved = {}
         if not isinstance(saved, dict):
             saved = {}
-        values = {name: saved.get(name) for name in KEPT}
-        return {name: value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0 for name, value in values.items()}
+        given_index = saved.get("given_index")
+        valid = isinstance(given_index, int) and not isinstance(given_index, bool) and given_index >= 0
+        return {"given_index": given_index if valid else 0, "player": clean_player(saved.get("player"))}
+
+    # The kept values in words, for the log.
+    def describe_kept(self) -> str:
+        return " ".join([f"given_index={self.kept['given_index']}", *player_words(self.kept["player"])])
 
     # Compares what the game has with what the save file has: nothing to do when they are the same; otherwise writes the file whole, one change or several at once,
     # into a new file first, then in place of the old one, so that a client closed while writing leaves the previous file.
@@ -104,8 +110,8 @@ class GTA3Context(CommonContext):
         with open(self.save_file + ".tmp", "w", encoding="utf-8") as file:
             json.dump(self.kept, file)
         os.replace(self.save_file + ".tmp", self.save_file)
-        self.saved = dict(self.kept)
-        logger.info("Saved for the next session: " + ", ".join(f"{name} {value}" for name, value in self.kept.items()))
+        self.saved = copy.deepcopy(self.kept)
+        logger.info("Saved for the next session: " + self.describe_kept())
 
     # Runs in the background while the client is open: every SAVE_EVERY seconds, writes the save file if what the game has changed.
     async def saver(self) -> None:
@@ -116,12 +122,12 @@ class GTA3Context(CommonContext):
                 pass
             self.save_if_changed()
 
-    # Called by ModLink for each "progress <given_index> <money>" line: what the game has now, both values read on the same frame; the count of items applied only grows.
-    async def on_mod_progress(self, applied: int, money: int) -> None:
+    # Called by ModLink for each "progress given_index=<count> money=<amount> ..." line: what the game has now, all read on the same frame; the count of items applied only grows.
+    async def on_mod_progress(self, applied: int, player: dict) -> None:
         if self.kept is None:
-            logger.info(f"Progress {applied} {money} not kept: not connected to the room")
+            logger.info(f"Progress given_index={applied} not kept: not connected to the room")
             return
-        self.kept = {"money": money, "given_index": max(applied, self.kept["given_index"])}
+        self.kept = {"given_index": max(applied, self.kept["given_index"]), "player": player}
         self.save_if_changed()
 
     # A DeathLink player died elsewhere: the client logs it as usual, and the mod kills the player.
@@ -141,8 +147,8 @@ class GTA3Context(CommonContext):
         if self.kept is None:
             return
         self.mod.send_consumables(CONSUMABLE_EFFECTS)
-        for name in KEPT:
-            self.mod.send_kept(name, self.kept[name])
+        self.mod.send_given_index(self.kept["given_index"])
+        self.mod.send_player(self.kept["player"])
         self.send_options_to_mod()
         self.send_items_to_mod()
 
@@ -190,8 +196,8 @@ class GTA3Context(CommonContext):
                 logger.error("The room did not say its seed: nothing is kept between sessions")
             self.save_file = self.save_path() if self.room_seed else None
             self.kept = self.load_kept()
-            self.saved = dict(self.kept)
-            logger.info("Kept from this slot's earlier sessions: " + ", ".join(f"{name} {value}" for name, value in self.kept.items()))
+            self.saved = copy.deepcopy(self.kept)
+            logger.info("Kept from this slot's earlier sessions: " + self.describe_kept())
             self.send_slot_to_mod()
             self.mod.set_room_connected(True)
         elif cmd == "ReceivedItems" and self.kept is not None:

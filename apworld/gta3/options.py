@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Toggle
+from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, StartInventoryPool, Toggle
 
 
 class MissionOrder(Choice):
@@ -27,3 +27,5 @@ class GTA3Options(PerGameCommonOptions):
     need_money: NeedMoney
     death_link: DeathLink
     arrest_is_death: ArrestIsDeath
+    # Archipelago's own: items the player starts with, taken out of the item pool; each one leaves a location that gets a filler item instead (get_filler_item_name).
+    start_inventory_from_pool: StartInventoryPool

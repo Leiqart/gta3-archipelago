@@ -47,6 +47,11 @@ class GTA3World(World):
         item = ITEM_NAMED[name]
         return GTA3Item(name, ItemClassification[item.classification], item.id, self.player)
 
+    # The item Archipelago asks for when it needs one more of ours to fill a location (a starting item taken from the pool, item links, excluded locations):
+    # money, the only filler, which the logic never needs. Without it, Archipelago would pick any of our items, an unlock most likely.
+    def get_filler_item_name(self) -> str:
+        return MONEY.name
+
     # The map: Menu leads to Portland, which leads to Staunton Island once Last Requests is passed, which leads to Shoreside Vale once A Drop in the Ocean is.
     def create_regions(self) -> None:
         regions = {name: Region(name, self.player, self.multiworld) for name in ("Menu", PORTLAND, STAUNTON, SHORESIDE)}
@@ -74,7 +79,7 @@ class GTA3World(World):
             names = [contact.progressive_item for contact in CONTACTS for _ in contact_missions(contact.name)]
         self.weapons = WEAPONS[:len(ALL_MISSIONS) - len(names)]
         names += [weapon.name for weapon in self.weapons]
-        names += [MONEY.name] * (len(ALL_MISSIONS) - len(names))
+        names += [self.get_filler_item_name() for _ in range(len(ALL_MISSIONS) - len(names))]
         self.multiworld.itempool += [self.create_item(name) for name in names]
 
     # What the client needs of our slot: whether missions ask for their money (the logic counts no money either way), the DeathLink settings,

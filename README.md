@@ -4,12 +4,13 @@
 
 An [Archipelago](https://archipelago.gg) multiworld integration for classic **Grand Theft Auto III**: passing missions sends checks, and the items you receive unlock the missions you can play.
 
-> **Alpha.** A run plays from the first mission to the goal, but saving and loading a game is not supported yet: play a run in one session for now.
+> **Alpha.** A run plays from the first mission to the goal. A new session gets back your money, health, armour and weapons, but not the missions you passed: its new game starts the story again, with every unlock received. Playing a run in one session is still the easiest for now.
 
 ## How it plays
 
 - **Checks**: every story mission (65), and 8 side missions open from the start on their island: the four RC Toyz missions, the three 4x4 challenges and Multistorey Mayhem.
-- **Items**: what unlocks each story mission, and a license for each of nine weapons the shops sell (Uzi, shotgun, AK-47, M-16, sniper rifle, rocket launcher, flamethrower, Molotov cocktail, grenade). A locked mission's marker is hidden in the game; once unlocked, its marker shows on the radar and on the ground. A shop shows a weapon out of stock until you receive its license; the pistol and the body armour are sold as in the game.
+- **Items**: what unlocks each story mission, and a license for each of nine weapons the shops sell (Uzi, shotgun, AK-47, M-16, sniper rifle, rocket launcher, flamethrower, Molotov cocktail, grenade). A locked mission's marker is hidden in the game; once unlocked, its marker shows on the radar and on the ground. A shop shows a weapon out of stock until you receive its license; the pistol and the body armour are sold as in the game. Weapons put straight in your hands (Pistol, Uzi, Shotgun, AK-47, M-16, Sniper Rifle, Rocket Launcher, Flamethrower, Molotov Cocktails, Grenades), with the ammo the shops give, exist as items too, though none is in the item pool yet: start with them through `start_inventory_from_pool`.
+- **Between sessions**: GTA3 Client keeps your money, health, armour, weapons with their ammo and the weapon in hand in a save file of its own, one per room, and a new game started with Run Archipelago gets them back, with the items received in the meantime. The missions passed do not come back yet.
 - **Any order**: the mod starts the marker of an unlocked mission itself when the story has not, one mission per marker at a time, and takes off the story's locks that only hold for some order (the pause between Salvatore's Called a Meeting and Chaperone, and Salvatore's lock between his missions).
 - **Islands**: they open as in the game. Staunton Island once Last Requests is passed, Shoreside Vale once A Drop in the Ocean is.
 - **Missions the story closes**: once Last Requests is passed, the Mafia's missions left in Portland can never be played; Waka-Gashira Wipeout! does the same to Kenji's, Grand Theft Aero to Two-Faced Tanner. Their checks are sent with the mission that closes them.
@@ -23,6 +24,7 @@ An [Archipelago](https://archipelago.gg) multiworld integration for classic **Gr
 | `need_money` | `false` (default), `true` | `true`: Bomb Da Base: Act II asks for $100000 and The Exchange for $500000, as in the game. `false`: both start without paying. The logic counts no money either way. |
 | `death_link` | `false` (default), `true` | Archipelago's DeathLink: when you are wasted, every DeathLink player of the room dies, and when one of them dies, you are wasted. |
 | `arrest_is_death` | `true` (default), `false` | With `death_link` on: being busted counts as a death too. |
+| `start_inventory_from_pool` | items and counts, like `Uzi License: 1` | Archipelago's own: you start with these items, taken out of the item pool; each one leaves a $10000 in its place. |
 
 ## Installation
 
@@ -90,6 +92,8 @@ setx PLUGIN_SDK_DIR "C:\path\to\plugin-sdk"
 A dev build of the ASI adds an autopilot that skips the start-up videos, starts a game and plays the test missions by itself (F8 pauses it), with cheat keys: F3 fails the running mission, F5 teleports to the mission blip, F6 kills the character the mission marks, F7 gives a car, F9 writes the position to the log; never ship a dev build. The first build also compiles plugin-sdk's `Plugin_III.lib` with plugin-sdk's own tools (premake and MSBuild, about a minute); after checking out another plugin-sdk commit, delete `%PLUGIN_SDK_DIR%\output\lib\Plugin_III.lib` so the next build makes it again. With the libraries cloned next to this repository, `GTAPIII.code-workspace` opens the three folders side by side in VS Code.
 
 `python apworld\tools\autotest.py` plays a test run with nothing to start by hand: it generates a room from `apworld\players`, hosts it on port 38300, opens GTA3 Client and the game (with a dev build installed), lets the autopilot play, and sums up the game's log once the run ends. With `--shop`, nobody plays: the player walks onto the Uzi of Portland's Ammu-Nation before and after the room sends its license, to check that a shop sells a weapon only with it. With `--player`, two sessions follow each other: the room sends $10000 in the first, then the client's save file gets a health, an armour and an Uzi in hand; the second, with a new client and a new game, must start with all of it, not apply that $10000 again, and add the next one. Close GTA3 Client first, and leave the game alone until the run ends.
+
+Two checks need no game: `python apworld\tools\check_client.py` checks GTA3 Client's lines to the mod and its save file, with stubs in place of Archipelago; `python apworld\tools\check_generation.py` generates a room for every combination of the options (and a few with other games) and checks what each one holds, once the apworld is installed.
 
 ## Credits
 

@@ -37,18 +37,19 @@ namespace {
 
     // The state the game starts with: the save file's, or what this game sent last, for a new game started without closing the game.
     std::optional<State> g_saved;
-    // Whether the game being played has taken the saved money, then the rest of the state: until both, its own state is not the slot's, and is not reported.
-    bool g_moneyTaken = false;
-    bool g_restored = false;
+    // Whether the game being played has been given the saved money, and the rest of the saved state: until both, its own state is not the slot's, and is not reported.
+    // Both go back to false when a new game starts.
+    bool g_savedMoneyGiven = false;
+    bool g_savedStateGiven = false;
     // What was last sent to the client (items applied, state), and when; none while the room is not connected, so that it is sent again once it is.
     std::optional<std::pair<int, State>> g_reported;
     DWORD g_reportedAt = 0;
-    // When the game may report after giving the saved state: the weapon put in hand takes a moment to be there, and a report sooner would save the one before.
-    DWORD g_restoredAt = 0;
+    // When the saved state was given: the weapon put in hand takes a moment to be there, and a report sooner would save the one before.
+    DWORD g_savedStateGivenAt = 0;
 
     CPlayerInfo& Info() { return CWorld::Players[CWorld::PlayerInFocus]; }
 
-    // True when the player is in the game and free: alive, not arrested, no cutscene, not held by a script. The state is only given and read then.
+    // True when the player is in the game and free: alive, not arrested, no cutscene, not held by a script. The state is only read then.
     bool Free() {
         return FindPlayerPed() && Info().m_nPlayerState == PLAYERSTATE_PLAYING && !CCutsceneMgr::ms_running && !CPad::GetPad(0)->DisablePlayerControls;
     }
@@ -103,41 +104,35 @@ namespace {
         return state;
     }
 
-    // Gives the saved money, on the game's first frame and before its items, which add to it.
-    void TakeMoney() {
-        g_moneyTaken = true;
-        if (!g_saved || !g_saved->money) {
-            Log::Write("Player: nothing saved yet, the game starts with its own money");
-            return;
+    // Once at the start of each new game: applies the saved state, before the game's items, which may add to it. The money at once, as it needs no player; the rest as soon as the player exists,
+    // through the game's own script commands, a weapon's model loaded before the weapon is given, as a mission does. Called again until all is given, then does nothing until the next new game.
+    void ApplyOnLoad() {
+        if (!g_savedMoneyGiven && g_saved && g_saved->money) {
+            // The counter on the screen runs towards the money a few dollars a frame: it starts at the amount too.
+            Info().m_nMoney = Info().m_nDisplayMoney = *g_saved->money;
         }
-        // The counter on the screen runs towards the money a few dollars a frame: it starts at the amount too.
-        Info().m_nMoney = Info().m_nDisplayMoney = *g_saved->money;
-        Log::Write("Player: the game starts with the $" + std::to_string(*g_saved->money) + " the save file kept");
-    }
-
-    // Gives the rest of the saved state once the player is free, through the game's own script commands: a weapon's model is loaded before the weapon is given, as a mission does.
-    void Restore() {
-        g_restored = true;
-        g_restoredAt = GetTickCount();
+        g_savedMoneyGiven = true;
+        if (g_savedStateGiven || !FindPlayerPed()) return;
+        g_savedStateGiven = true;
+        g_savedStateGivenAt = GetTickCount();
         if (!g_saved || *g_saved == State{}) {
-            Log::Write("Player: nothing saved to restore, the player keeps the game's own health and weapons");
+            Log::Write("Player: nothing saved yet, the game starts with its own money, health and weapons");
             return;
         }
         CPlayerPed& ped = *FindPlayerPed();
         if (g_saved->health) ped.m_fHealth = static_cast<float>(std::max(1, *g_saved->health));
         if (g_saved->armour) ped.m_fArmour = static_cast<float>(*g_saved->armour);
+        const auto model = [](int weapon) { return CWeaponInfo::GetWeaponInfo(static_cast<eWeaponType>(weapon))->m_nModelId; };
         for (const auto& [weapon, ammo] : g_saved->weapons) {
-            const int model = CWeaponInfo::GetWeaponInfo(static_cast<eWeaponType>(weapon))->m_nModelId;
-            if (model > 0) Command<Commands::REQUEST_MODEL>(model);
+            if (model(weapon) > 0) Command<Commands::REQUEST_MODEL>(model(weapon));
         }
         Command<Commands::LOAD_ALL_MODELS_NOW>();
-        for (const auto& [weapon, ammo] : g_saved->weapons) Command<Commands::GIVE_WEAPON_TO_PLAYER>(CWorld::PlayerInFocus, weapon, ammo);
         for (const auto& [weapon, ammo] : g_saved->weapons) {
-            const int model = CWeaponInfo::GetWeaponInfo(static_cast<eWeaponType>(weapon))->m_nModelId;
-            if (model > 0) Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(model);
+            Command<Commands::GIVE_WEAPON_TO_PLAYER>(CWorld::PlayerInFocus, weapon, ammo);
+            if (model(weapon) > 0) Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(model(weapon));
         }
         if (g_saved->inHand) Command<Commands::SET_CURRENT_PLAYER_WEAPON>(CWorld::PlayerInFocus, *g_saved->inHand);
-        Log::Write("Player: restored " + Describe(*g_saved));
+        Log::Write("Player: the game starts with what the save file kept, " + Describe(*g_saved));
     }
 
     // One "player <key>=<value> ..." line: what the save file kept, "player" alone for a slot that never played. A game that starts takes it; a game already running keeps its own, which is newer.
@@ -149,18 +144,15 @@ namespace {
             Log::Write("Unknown message from the client: " + line);
             return;
         }
-        if (g_moneyTaken) return;
+        if (g_savedMoneyGiven) return;
         g_saved = state;
-        TakeMoney();
+        ApplyOnLoad();
     }
 
-    // Runs once per frame: gives the saved state, then tells the client the count of items applied and the player's state, read together, when they change and each time the room connects.
-    void Process() {
-        // A new game started without closing the game hears no "player" line: it takes what this game sent last.
-        if (!g_moneyTaken && g_saved && FindPlayerPed()) TakeMoney();
-        if (!g_moneyTaken || !Free()) return;
-        if (!g_restored) Restore();
-        if (GetTickCount() - g_restoredAt < kReportEvery) return;
+    // While the game runs: tells the client the count of items applied and the player's state, read together, when they change (at most once a second) and each time the room connects.
+    void ReportOnRuntime() {
+        // The state is read only while the player is free: dead, arrested or in a cutscene, it is passing through.
+        if (!g_savedStateGiven || !Free() || GetTickCount() - g_savedStateGivenAt < kReportEvery) return;
         if (!ClientLink::IsConnected()) {
             g_reported.reset();
             return;
@@ -174,11 +166,18 @@ namespace {
         g_saved = progress.second;
         Log::Write("Player: progress sent, " + text);
     }
+
+    // Runs once per frame: applies what the "player" line could not apply yet (a player not created), or, for a new game started without closing the game,
+    // which hears no such line, what this game sent last; then reports.
+    void Process() {
+        if (!g_savedStateGiven && g_saved) ApplyOnLoad();
+        ReportOnRuntime();
+    }
 }
 
 void Player::Install() {
     ClientLink::On("player", HandlePlayer);
     // initScriptsEvent follows CTheScripts::Init, which every game that starts runs: its state is the game's own until the saved one is given.
-    plugin::Events::initScriptsEvent += [] { g_moneyTaken = g_restored = false; };
+    plugin::Events::initScriptsEvent += [] { g_savedMoneyGiven = g_savedStateGiven = false; };
     plugin::Events::gameProcessEvent += Process;
 }

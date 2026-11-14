@@ -185,10 +185,11 @@ def player_verdict(room: Path) -> None:
     verdicts = [
         ("session 1 starts from nothing saved", has(first, "Player: nothing saved yet")),
         ("session 1 reports the $10000", has(first, "Player: progress sent, given_index=1 ", "money=10000")),
-        ("session 2 starts with the saved $10000", has(second, "Player: the game starts with the $10000")),
-        ("session 2 restores health, armour and the Uzi in hand", has(second, "Player: restored", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
+        ("session 2 starts with the saved $10000, health, armour and the Uzi in hand",
+         has(second, "Player: the game starts with what the save file kept", "money=10000", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
         ("session 2 skips the first $10000", has(second, "Items: item 0", "the save file kept its money")),
-        ("session 2 reports $20000 with the Uzi", has(second, "Player: progress sent, given_index=2 ", "money=20000", "weapon=3:77")),
+        ("session 2 reports, after the intro, $20000, health 57, armour 33 and the Uzi in hand",
+         has(second, "Player: progress sent, given_index=2 ", "money=20000", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
         ("the save file ends with $20000, 2 items and the Uzi", kept.get("given_index") == 2 and kept.get("player", {}).get("money") == 20000 and [3, 77] in kept.get("player", {}).get("weapons", [])),
     ]
     for what, ok in verdicts:

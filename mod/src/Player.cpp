@@ -8,6 +8,7 @@
 #include "plugin.h"
 #include "CCutsceneMgr.h"
 #include "CPad.h"
+#include "CPickup.h"
 #include "CPlayerInfo.h"
 #include "CPlayerPed.h"
 #include "CWeaponInfo.h"
@@ -44,8 +45,11 @@ namespace {
     // What was last sent to the client (items applied, state), and when; none while the room is not connected, so that it is sent again once it is.
     std::optional<std::pair<int, State>> g_reported;
     DWORD g_reportedAt = 0;
-    // When the saved state was given: the weapon put in hand takes a moment to be there, and a report sooner would save the one before.
-    DWORD g_savedStateGivenAt = 0;
+    // When weapons were last given, the saved ones or one received: the weapon put in hand takes a moment to be there, and a report sooner would save the one before.
+    DWORD g_weaponsGivenAt = 0;
+    // Weapons received as items ("give_weapon"), waiting to be put in the player's hands: given only while he is free, as the game takes the weapons of a player wasted or busted.
+    // They wait through a new game too: the game counts their items as applied, and a report comes only once they are given, so the save file never counts one it does not hold.
+    std::vector<int> g_pendingGifts;
 
     CPlayerInfo& Info() { return CWorld::Players[CWorld::PlayerInFocus]; }
 
@@ -104,8 +108,22 @@ namespace {
         return state;
     }
 
-    // Once at the start of each new game: applies the saved state, before the game's items, which may add to it. The money at once, as it needs no player; the rest as soon as the player exists,
-    // through the game's own script commands, a weapon's model loaded before the weapon is given, as a mission does. Called again until all is given, then does nothing until the next new game.
+    // Gives the player these weapons with their ammo through the game's own script commands, as a mission does: each weapon's model is loaded first, and handed back to the game once given.
+    // A weapon the player holds already gets the ammo on top of his own.
+    void GiveWeapons(const std::vector<std::pair<int, int>>& weapons) {
+        const auto model = [](int weapon) { return CWeaponInfo::GetWeaponInfo(static_cast<eWeaponType>(weapon))->m_nModelId; };
+        for (const auto& [weapon, ammo] : weapons) {
+            if (model(weapon) > 0) Command<Commands::REQUEST_MODEL>(model(weapon));
+        }
+        Command<Commands::LOAD_ALL_MODELS_NOW>();
+        for (const auto& [weapon, ammo] : weapons) {
+            Command<Commands::GIVE_WEAPON_TO_PLAYER>(CWorld::PlayerInFocus, weapon, ammo);
+            if (model(weapon) > 0) Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(model(weapon));
+        }
+    }
+
+    // Once at the start of each new game: applies the saved state, before the game's items, which may add to it. The money at once, as it needs no player; the rest as soon as the player exists.
+    // Called again until all is given, then does nothing until the next new game.
     void ApplyOnLoad() {
         if (!g_savedMoneyGiven && g_saved && g_saved->money) {
             // The counter on the screen runs towards the money a few dollars a frame: it starts at the amount too.
@@ -114,7 +132,7 @@ namespace {
         g_savedMoneyGiven = true;
         if (g_savedStateGiven || !FindPlayerPed()) return;
         g_savedStateGiven = true;
-        g_savedStateGivenAt = GetTickCount();
+        g_weaponsGivenAt = GetTickCount();
         if (!g_saved || *g_saved == State{}) {
             Log::Write("Player: nothing saved yet, the game starts with its own money, health and weapons");
             return;
@@ -122,15 +140,7 @@ namespace {
         CPlayerPed& ped = *FindPlayerPed();
         if (g_saved->health) ped.m_fHealth = static_cast<float>(std::max(1, *g_saved->health));
         if (g_saved->armour) ped.m_fArmour = static_cast<float>(*g_saved->armour);
-        const auto model = [](int weapon) { return CWeaponInfo::GetWeaponInfo(static_cast<eWeaponType>(weapon))->m_nModelId; };
-        for (const auto& [weapon, ammo] : g_saved->weapons) {
-            if (model(weapon) > 0) Command<Commands::REQUEST_MODEL>(model(weapon));
-        }
-        Command<Commands::LOAD_ALL_MODELS_NOW>();
-        for (const auto& [weapon, ammo] : g_saved->weapons) {
-            Command<Commands::GIVE_WEAPON_TO_PLAYER>(CWorld::PlayerInFocus, weapon, ammo);
-            if (model(weapon) > 0) Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(model(weapon));
-        }
+        GiveWeapons(g_saved->weapons);
         if (g_saved->inHand) Command<Commands::SET_CURRENT_PLAYER_WEAPON>(CWorld::PlayerInFocus, *g_saved->inHand);
         Log::Write("Player: the game starts with what the save file kept, " + Describe(*g_saved));
     }
@@ -152,7 +162,7 @@ namespace {
     // While the game runs: tells the client the count of items applied and the player's state, read together, when they change (at most once a second) and each time the room connects.
     void ReportOnRuntime() {
         // The state is read only while the player is free: dead, arrested or in a cutscene, it is passing through.
-        if (!g_savedStateGiven || !Free() || GetTickCount() - g_savedStateGivenAt < kReportEvery) return;
+        if (!g_savedStateGiven || !Free() || GetTickCount() - g_weaponsGivenAt < kReportEvery) return;
         if (!ClientLink::IsConnected()) {
             g_reported.reset();
             return;
@@ -167,12 +177,34 @@ namespace {
         Log::Write("Player: progress sent, " + text);
     }
 
+    // Puts the weapons received as items in the player's hands, once the saved state is given and while he is free, each with the ammo the game's shops give with it.
+    void GivePendingGifts() {
+        if (g_pendingGifts.empty() || !g_savedStateGiven || !Free()) return;
+        std::vector<std::pair<int, int>> weapons;
+        std::string given;
+        for (const int weapon : g_pendingGifts) {
+            weapons.emplace_back(weapon, static_cast<int>(AmmoForWeapon[weapon]));
+            given += " " + std::to_string(weapon) + ":" + std::to_string(AmmoForWeapon[weapon]);
+        }
+        g_pendingGifts.clear();
+        GiveWeapons(weapons);
+        g_weaponsGivenAt = GetTickCount();
+        Log::Write("Player: weapons received put in hand, weapon:ammo" + given);
+    }
+
     // Runs once per frame: applies what the "player" line could not apply yet (a player not created), or, for a new game started without closing the game,
-    // which hears no such line, what this game sent last; then reports.
+    // which hears no such line, what this game sent last; then gives the weapons received, then reports.
     void Process() {
         if (!g_savedStateGiven && g_saved) ApplyOnLoad();
+        GivePendingGifts();
         ReportOnRuntime();
     }
+}
+
+bool Player::GiveWeapon(int weapon) {
+    if (weapon <= 0 || weapon >= kWeaponSlots) return false;
+    g_pendingGifts.push_back(weapon);
+    return true;
 }
 
 void Player::Install() {

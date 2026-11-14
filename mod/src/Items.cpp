@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "Markers.h"
 #include "Message.h"
+#include "Player.h"
 #include "Shops.h"
 
 namespace {
@@ -19,11 +20,13 @@ namespace {
     // The effects of the consumable items, as the client names them ("money"): what they gave is in the slot's save file, so a later game does not apply them again.
     std::set<std::string> g_consumables;
 
-    // Does what the client says an item does: unlock a mission by its number, add money, or let the shops sell a weapon by its number; false for an effect this mod does not know.
+    // Does what the client says an item does: unlock a mission by its number, add money, let the shops sell a weapon by its number, or put a weapon in the player's hands;
+    // false for an effect this mod does not know, or a weapon the player cannot hold.
     bool Apply(const std::string& effect, int value) {
         if (effect == "unlock") Markers::Unlock(static_cast<unsigned char>(value));
         else if (effect == "money") CWorld::Players[CWorld::PlayerInFocus].m_nMoney += value;
         else if (effect == "weapon") Shops::Unlock(value);
+        else if (effect == "give_weapon") return Player::GiveWeapon(value);
         else if (effect != "none") return false;
         return true;
     }

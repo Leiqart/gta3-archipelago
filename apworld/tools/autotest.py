@@ -4,8 +4,8 @@ waits for the run to end, then stops everything and sums up the game's log.
 Usage: python apworld/tools/autotest.py [--shop | --player]
   (default)  the dev build's autopilot plays the test missions with the settings of GTA3Archipelago-dev.ini, until it has passed all it can or is stuck.
   --shop     the shop check (shop_test=1, nobody plays): the player walks onto the Uzi of Portland's Ammu-Nation without its license, the room sends it, then again with it.
-  --player   two sessions, nobody plays: the room sends $10000 in the first, then the client's save file gets a health, an armour and an Uzi; the second, with a new client and a new game,
-             must start with all of it, skip the first $10000, and add the next one.
+  --player   two sessions, nobody plays: the room sends $10000 and a Shotgun in the first, then the client's save file gets a health, an armour and an Uzi; the second, with a new client
+             and a new game, must start with all of it, skip the first $10000 and Shotgun, and add the next ones.
 The game is the one mod/build.cmd installs into (GTA3_GAME, else dist/live-game-test/game), with a dev build (mod/build.cmd dev); Archipelago is ARCHIPELAGO_DIR, else C:/ProgramData/Archipelago.
 GTA3 Client must be closed first: the mod reaches the client on port 2727. The run takes the screen; do not touch the game until it ends.
 The dev settings file is changed for the run (run_in_background=1, or the check's settings) and put back afterwards, whatever happens."""
@@ -135,8 +135,12 @@ def shop_check(run: Run, deadline: float) -> int | None:
     return gta.poll()
 
 
-# The state the player check writes into the save file between its two sessions, as the second must restore it: a health, an armour, and an Uzi (3) with its ammo, in hand.
-PLAYER_STATE = {"health": 57, "armour": 33, "in_hand": 3, "weapons": [[3, 77]]}
+# What the player check adds to the save file between its two sessions, as the second must restore it: a health, an armour, and an Uzi (3) with its ammo, in hand.
+PLAYER_STATE = {"health": 57, "armour": 33, "in_hand": 3}
+ADDED_WEAPON = [3, 77]
+# The items the room's console sends in each session: $10000, and a Shotgun given in hand (4), which comes with the 25 shells the game's shops give.
+SENT_ITEMS = ("$10000", "Shotgun")
+SHOTGUN_AMMO = 25
 
 
 # The client's save file of this room: its name starts with the room's seed, the number in the room's file name.
@@ -145,8 +149,9 @@ def save_file(room: Path) -> Path | None:
     return saves[0] if saves else None
 
 
-# The player check: a first session gets $10000 from the room's console and saves it; the save file then gets PLAYER_STATE; a second session, with a new client and a new game,
-# must start with both, skip the first $10000, then get $10000 more. A game gives the saved state, and reports, once the player is free: after the intro, which nobody skips here.
+# The player check: a first session gets SENT_ITEMS from the room's console and saves them; the save file then gets PLAYER_STATE and ADDED_WEAPON; a second session, with a new client
+# and a new game, must start with all of it, skip the first SENT_ITEMS (consumables), then get them again. A game reports once the player is free, and gives a weapon received then too:
+# after the intro, which nobody skips here.
 def player_check(run: Run, room: Path, deadline: float) -> int | None:
     for session in (1, 2):
         client, gta = run.open_session()
@@ -156,9 +161,12 @@ def player_check(run: Run, room: Path, deadline: float) -> int | None:
             return gta.poll()
         # The items the client sends after the state come within a few frames.
         time.sleep(5)
-        run.console(f"/send {run.slot} $10000")
-        if wait_for((f"Player: progress sent, given_index={session} ",), started + 1, deadline, gta) < 0:
-            print(f"Session {session}: the game never reported the $10000")
+        for item in SENT_ITEMS:
+            run.console(f"/send {run.slot} {item}")
+            time.sleep(1)
+        applied = session * len(SENT_ITEMS)
+        if wait_for((f"Player: progress sent, given_index={applied} ",), started + 1, deadline, gta) < 0:
+            print(f"Session {session}: the game never reported the items sent")
         # Time for the client to write the save file before both close.
         time.sleep(3)
         run.end(gta, client)
@@ -167,6 +175,7 @@ def player_check(run: Run, room: Path, deadline: float) -> int | None:
         if session == 1 and save:
             kept = json.loads(save.read_text(encoding="utf-8"))
             kept["player"].update(PLAYER_STATE)
+            kept["player"]["weapons"] = kept["player"].get("weapons", []) + [ADDED_WEAPON]
             save.write_text(json.dumps(kept), encoding="utf-8")
             print("Between the sessions, the save file holds:", json.dumps(kept))
     return 0
@@ -182,15 +191,20 @@ def player_verdict(room: Path) -> None:
     has = lambda lines, *parts: any(all(part in line for part in parts) for line in lines)
     save = save_file(room)
     kept = json.loads(save.read_text(encoding="utf-8")) if save else {}
+    shotgun, twice = f"weapon=4:{SHOTGUN_AMMO}", f"weapon=4:{2 * SHOTGUN_AMMO}"
+    weapons = kept.get("player", {}).get("weapons", [])
     verdicts = [
         ("session 1 starts from nothing saved", has(first, "Player: nothing saved yet")),
-        ("session 1 reports the $10000", has(first, "Player: progress sent, given_index=1 ", "money=10000")),
-        ("session 2 starts with the saved $10000, health, armour and the Uzi in hand",
-         has(second, "Player: the game starts with what the save file kept", "money=10000", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
+        ("session 1 puts the Shotgun received in hand once the player is free", has(first, "Player: weapons received put in hand", f"4:{SHOTGUN_AMMO}")),
+        ("session 1 reports the $10000 and the Shotgun", has(first, "Player: progress sent, given_index=2 ", "money=10000", shotgun)),
+        ("session 2 starts with the saved money, health, armour, Shotgun and Uzi in hand",
+         has(second, "Player: the game starts with what the save file kept", "money=10000", "health=57", "armour=33", "in_hand=3", "weapon=3:77", shotgun)),
         ("session 2 skips the first $10000", has(second, "Items: item 0", "the save file kept its money")),
-        ("session 2 reports, after the intro, $20000, health 57, armour 33 and the Uzi in hand",
-         has(second, "Player: progress sent, given_index=2 ", "money=20000", "health=57", "armour=33", "in_hand=3", "weapon=3:77")),
-        ("the save file ends with $20000, 2 items and the Uzi", kept.get("given_index") == 2 and kept.get("player", {}).get("money") == 20000 and [3, 77] in kept.get("player", {}).get("weapons", [])),
+        ("session 2 skips the first Shotgun, already in the save file", has(second, "Items: item 1 (Shotgun)", "the save file kept its give_weapon")),
+        ("session 2 reports, after the intro, $20000, health 57, armour 33, the Uzi and the Shotgun with the second's shells",
+         has(second, "Player: progress sent, given_index=4 ", "money=20000", "health=57", "armour=33", "weapon=3:77", twice)),
+        ("the save file ends with $20000, 4 items, the Uzi and the Shotgun", kept.get("given_index") == 4 and kept.get("player", {}).get("money") == 20000
+         and [3, 77] in weapons and [4, 2 * SHOTGUN_AMMO] in weapons),
     ]
     for what, ok in verdicts:
         print("ok  " if ok else "FAIL", what)

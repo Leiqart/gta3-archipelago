@@ -6,4 +6,7 @@
 namespace Player {
     // Takes the client's "player" lines and hooks the game's frame; call it once, from DllMain.
     void Install();
+    // Puts this weapon (eWeaponType) in the player's hands with the ammo the game's shops give with it, as soon as he is free; false for a number that is no weapon he can hold.
+    // Call it on the game thread, for an item received.
+    bool GiveWeapon(int weapon);
 }

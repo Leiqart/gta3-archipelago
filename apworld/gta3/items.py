@@ -12,11 +12,13 @@ class ItemData:
     id: int
     # How Archipelago treats it, in its own words: "progression" (the logic needs it to reach locations), "useful" (worth having, the logic does not need it) or "filler".
     classification: str
-    # What the mod does with it, in the words of docs/protocol.md: "unlock" a mission by its number, give "money", or let the shops sell a "weapon" by its number.
+    # What the mod does with it, in the words of docs/protocol.md: "unlock" a mission by its number, give "money", let the shops sell a "weapon" by its number,
+    # or "give_weapon": put a weapon in the player's hands, by its number, with the ammo the game's shops give with it.
     effect: str
     # What each copy gives, in the order our slot receives them (mission numbers, an amount, or a weapon's number): the nth copy gives the nth value, a copy past the last gives the last again.
     values: tuple[int, ...]
-    # True for an item the game uses up (money): a game applies it once, and a later game skips it, as the room keeps what it gave. A lasting one (a mission, a weapon) is applied by every game.
+    # True for an item the game uses up (money, a weapon given in hand): a game applies it once, and a later game skips it, as the save file keeps what it gave.
+    # A lasting one (a mission, a weapon's license) is applied by every game.
     consumable: bool = False
 
 
@@ -38,6 +40,21 @@ WEAPONS = [
     ItemData("Grenade License", 88, "useful", "weapon", (11,)),            # WEAPONTYPE_GRENADE
 ]
 
+# Weapons given in the player's hands, each with the ammo the game's shops give with it (AmmoForWeapon): consumable, as the ammo is used up,
+# and what the player holds is kept in the save file's player state. None is in the item pool yet: a player gets one from start_inventory_from_pool or a host's /send.
+GIFTS = [
+    ItemData("Pistol", 89, "filler", "give_weapon", (2,), consumable=True),             # WEAPONTYPE_COLT45
+    ItemData("Uzi", 90, "filler", "give_weapon", (3,), consumable=True),                # WEAPONTYPE_UZI
+    ItemData("Shotgun", 91, "filler", "give_weapon", (4,), consumable=True),            # WEAPONTYPE_SHOTGUN
+    ItemData("AK-47", 92, "filler", "give_weapon", (5,), consumable=True),              # WEAPONTYPE_AK47
+    ItemData("M-16", 93, "filler", "give_weapon", (6,), consumable=True),               # WEAPONTYPE_M16
+    ItemData("Sniper Rifle", 94, "filler", "give_weapon", (7,), consumable=True),       # WEAPONTYPE_SNIPERRIFLE
+    ItemData("Rocket Launcher", 95, "filler", "give_weapon", (8,), consumable=True),    # WEAPONTYPE_ROCKETLAUNCHER
+    ItemData("Flamethrower", 96, "filler", "give_weapon", (9,), consumable=True),       # WEAPONTYPE_FLAMETHROWER
+    ItemData("Molotov Cocktails", 97, "filler", "give_weapon", (10,), consumable=True), # WEAPONTYPE_MOLOTOV
+    ItemData("Grenades", 98, "filler", "give_weapon", (11,), consumable=True),          # WEAPONTYPE_GRENADE
+]
+
 # Every item of the apworld. Their numbers are stable, like the locations' (see missions.py): never renumber them, never reuse a retired one.
 ITEMS = [
     MONEY,
@@ -47,6 +64,7 @@ ITEMS = [
     # Free mode: each story mission's own unlock; Give Me Liberty has none, as the intro starts it.
     *(ItemData(unlock_item_name(mission), mission.unlock_id, "progression", "unlock", (mission.number,)) for mission in MISSIONS if mission.unlock_id),
     *WEAPONS,
+    *GIFTS,
 ]
 
 ITEM_NAMED = {item.name: item for item in ITEMS}

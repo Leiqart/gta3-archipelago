@@ -9,7 +9,8 @@ Usage: python apworld/tools/autotest.py [--shop | --player]
              in one message, and add the next ones.
 The game is the one mod/build.cmd installs into (GTA3_GAME, else dist/live-game-test/game), with a dev build (mod/build.cmd dev); Archipelago is ARCHIPELAGO_DIR, else C:/ProgramData/Archipelago.
 GTA3 Client must be closed first: the mod reaches the client on port 2727. The run takes the screen; do not touch the game until it ends.
-The dev settings file is changed for the run (run_in_background=1, or the check's settings) and put back afterwards, whatever happens."""
+The dev settings file is changed for the run (run_in_background=1, or the check's settings) and put back afterwards. A copy of it waits next to it meanwhile:
+a run stopped before putting it back (the system out of memory, a window closed) leaves the copy, and the next run puts it back first."""
 import argparse
 import json
 import os
@@ -20,11 +21,12 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-ARCHIPELAGO = Path(os.environ.get("ARCHIPELAGO_DIR") or r"C:\ProgramData\Archipelago")
+from tooling import ARCHIPELAGO, REPO, Checks, generate, read_lines
+
 GAME = Path(os.environ.get("GTA3_GAME") or REPO / "dist" / "live-game-test" / "game")
 OUT = REPO / "apworld" / "output" / "autotest"
 INI = GAME / "scripts" / "GTA3Archipelago-dev.ini"
+INI_COPY = INI.with_name(INI.name + ".yours")
 LOG = GAME / "scripts" / "GTA3Archipelago.log"
 # Not host.cmd's 38281, so a room it hosts can stay open.
 PORT = "38300"
@@ -54,17 +56,10 @@ def port_in_use(port: int) -> bool:
     return False
 
 
-def log_lines() -> list[str]:
-    try:
-        return LOG.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-
-
 # Waits until a line of the game's log from this index on contains one of the texts; returns its index, or -1 once the deadline has passed or the game has closed.
 def wait_for(texts: tuple[str, ...], after: int, deadline: float, gta: subprocess.Popen) -> int:
     while True:
-        lines = log_lines()
+        lines = read_lines(LOG)
         for index in range(after, len(lines)):
             if any(text in lines[index] for text in texts):
                 return index
@@ -75,15 +70,10 @@ def wait_for(texts: tuple[str, ...], after: int, deadline: float, gta: subproces
 
 # Generates a room from apworld/players into a fresh folder; returns its .zip.
 def generate_room() -> Path:
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    OUT.mkdir(parents=True)
-    generated = subprocess.run([str(ARCHIPELAGO / "ArchipelagoGenerate.exe"), "--player_files_path", str(REPO / "apworld" / "players"), "--outputpath", str(OUT), "--spoiler", "2"],
-                               stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    rooms = sorted(OUT.glob("AP_*.zip"))
-    if generated.returncode != 0 or not rooms:
-        raise SystemExit("Generation failed:\n" + generated.stdout[-2000:] + generated.stderr[-2000:])
-    return rooms[-1]
+    code, room, output = generate(OUT, REPO / "apworld" / "players")
+    if code != 0 or room is None:
+        raise SystemExit("Generation failed:\n" + output[-4000:])
+    return room
 
 
 class Run:
@@ -100,7 +90,7 @@ class Run:
         self.processes.append(self.server)
         time.sleep(5)
 
-    # Opens a GTA3 Client on the room, then the game, which the dev build starts a new game in once the client is connected; returns the game.
+    # Opens a GTA3 Client on the room, then the game, which the dev build starts a new game in once the client is connected; returns both, the client first.
     def open_session(self) -> tuple[subprocess.Popen, subprocess.Popen]:
         client = subprocess.Popen([str(ARCHIPELAGO / "ArchipelagoLauncher.exe"), "GTA3 Client", "--", "--connect", f"localhost:{PORT}", "--name", self.slot])
         self.processes.append(client)
@@ -175,14 +165,14 @@ def player_check(run: Run, room: Path, deadline: float) -> int | None:
         time.sleep(3)
         run.end(gta, client)
         shutil.copy2(LOG, OUT / f"GTA3Archipelago-session{session}.log")
-        save = save_file(room)
-        if session == 1 and save:
-            kept = json.loads(save.read_text(encoding="utf-8"))
-            kept["player"].update(PLAYER_STATE)
-            kept["player"]["weapons"] = kept["player"].get("weapons", []) + [ADDED_WEAPON]
-            save.write_text(json.dumps(kept), encoding="utf-8")
-            print("Between the sessions, the save file holds:", json.dumps(kept))
         if session == 1:
+            save = save_file(room)
+            if save:
+                kept = json.loads(save.read_text(encoding="utf-8"))
+                kept["player"].update(PLAYER_STATE)
+                kept["player"]["weapons"] = kept["player"].get("weapons", []) + [ADDED_WEAPON]
+                save.write_text(json.dumps(kept), encoding="utf-8")
+                print("Between the sessions, the save file holds:", json.dumps(kept))
             for item in SENT_WHILE_AWAY:
                 run.console(f"/send {run.slot} {item}")
             applied += len(SENT_WHILE_AWAY)
@@ -191,13 +181,14 @@ def player_check(run: Run, room: Path, deadline: float) -> int | None:
     return 0
 
 
+# The game's log of one session of the player check, as it copies them.
+def session_log(session: int) -> list[str]:
+    return read_lines(OUT / f"GTA3Archipelago-session{session}.log")
+
+
 # The player check's verdict: what each session's log and the save file must say.
 def player_verdict(room: Path) -> None:
-    def log(session: int) -> list[str]:
-        path = OUT / f"GTA3Archipelago-session{session}.log"
-        return path.read_text(encoding="utf-8", errors="replace").splitlines() if path.exists() else []
-
-    first, second = log(1), log(2)
+    first, second = session_log(1), session_log(2)
     has = lambda lines, *parts: any(all(part in line for part in parts) for line in lines)
     save = save_file(room)
     kept = json.loads(save.read_text(encoding="utf-8")) if save else {}
@@ -218,8 +209,9 @@ def player_verdict(room: Path) -> None:
         ("the save file ends with $40000, 6 items, the Uzi and the Shotgun", kept.get("given_index") == 6 and kept.get("player", {}).get("money") == 40000
          and [3, 77] in weapons and [4, 2 * SHOTGUN_AMMO] in weapons),
     ]
+    checks = Checks()
     for what, ok in verdicts:
-        print("ok  " if ok else "FAIL", what)
+        checks.check(what, ok)
     print("The save file:", json.dumps(kept))
 
 
@@ -250,11 +242,13 @@ def main() -> None:
         raise SystemExit("Port 2727 is in use: close GTA3 Client first")
     if not (GAME / "gta3.exe").exists() or not INI.exists():
         raise SystemExit(f"No game with a dev build's settings in {GAME}: run mod/build.cmd dev")
+    if INI_COPY.exists():
+        shutil.copy2(INI_COPY, INI)
+        print("A run stopped before putting the dev settings back: they are put back now, from", INI_COPY)
     run = Run(slot_name())
     room = generate_room()
     print("Room:", room)
-    backup = OUT / "GTA3Archipelago-dev.ini.yours"
-    shutil.copy2(INI, backup)
+    shutil.copy2(INI, INI_COPY)
     started = time.time()
     exit_code = None
     try:
@@ -277,19 +271,19 @@ def main() -> None:
                 print(f"The game still ran after {LONGEST[mode] // 3600} hours")
     finally:
         run.stop()
-        shutil.copy2(backup, INI)
+        shutil.copy2(INI_COPY, INI)
+        INI_COPY.unlink()
         if LOG.exists():
             shutil.copy2(LOG, OUT / "GTA3Archipelago.log")
     print(f"Ran {int(time.time() - started)} s")
     if mode == "player":
         for session in (1, 2):
-            path = OUT / f"GTA3Archipelago-session{session}.log"
             print(f"--- session {session}")
-            sum_up(path.read_text(encoding="utf-8", errors="replace").splitlines() if path.exists() else [], exit_code, mode)
+            sum_up(session_log(session), exit_code, mode)
         print("--- verdict")
         player_verdict(room)
     else:
-        sum_up(log_lines(), exit_code, mode)
+        sum_up(read_lines(LOG), exit_code, mode)
     print("Dev settings put back; the run's files are in", OUT)
 
 

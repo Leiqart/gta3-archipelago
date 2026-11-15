@@ -1,65 +1,51 @@
 """Generates GTA III rooms for every combination of the options and checks each spoiler: what fills the 73 locations, and what the player starts with.
-Then excluded locations (each takes the place of a license; more than 9 cannot be filled by GTA III alone), and a few multiworld rooms:
+Then excluded locations (each takes the place of a license; more than the locations the unlocks leave cannot be filled by GTA III alone), and a few multiworld rooms:
 GTA III with A Short Hike (shipped with Archipelago), and two GTA III slots in one room.
 
 Usage: python apworld/tools/check_generation.py
 Install the apworld first (apworld/build.cmd): the generator uses the one in custom_worlds. Archipelago is ARCHIPELAGO_DIR, else C:/ProgramData/Archipelago.
 The rooms go to apworld/output/check_generation. It takes a few minutes, one generation after the other."""
+import importlib
 import itertools
-import os
 import re
-import shutil
-import subprocess
 import sys
 import types
 import zipfile
 from collections import Counter
-from pathlib import Path
 
-repo = Path(__file__).resolve().parents[2]
-archipelago = Path(os.environ.get("ARCHIPELAGO_DIR") or r"C:\ProgramData\Archipelago")
-work = repo / "apworld" / "output" / "check_generation"
-missions = types.ModuleType("missions")
-exec(compile((repo / "apworld/gta3/missions.py").read_text(encoding="utf-8"), "missions.py", "exec"), missions.__dict__)
-LOCATIONS = sorted((mission.name for mission in missions.ALL_MISSIONS), key=len, reverse=True)
-items = types.ModuleType("gta3.items")
-# items.py imports missions.py as a relative module: it gets the one read above.
+from tooling import REPO, Checks, generate
+
+WORK = REPO / "apworld" / "output" / "check_generation"
+# The apworld's tables, without Archipelago: a stub package keeps gta3/__init__.py, which needs it, from running.
 sys.modules["gta3"] = types.ModuleType("gta3")
-sys.modules["gta3"].__path__ = [str(repo / "apworld/gta3")]
-sys.modules["gta3.missions"] = missions
-items.__package__ = "gta3"
-exec(compile((repo / "apworld/gta3/items.py").read_text(encoding="utf-8"), "items.py", "exec"), items.__dict__)
-GIFTS = {gift.name for gift in items.GIFTS}
-failures = []
+sys.modules["gta3"].__path__ = [str(REPO / "apworld" / "gta3")]
+missions = importlib.import_module("gta3.missions")
+items = importlib.import_module("gta3.items")
+# Longest names first: "Bomb Da Base: Act II" before "Bomb Da Base: Act I", as both names and items hold ": ".
+LOCATIONS = sorted((mission.name for mission in missions.ALL_MISSIONS), key=len, reverse=True)
+UNLOCKS = [mission for mission in missions.MISSIONS if mission.unlock_id]
+KINDS = {
+    items.MONEY.name: "money",
+    **{contact.progressive_item: "progressive" for contact in missions.CONTACTS},
+    **{missions.unlock_item_name(mission): "unlock" for mission in UNLOCKS},
+    **{weapon.name: "license" for weapon in items.WEAPONS},
+    **{gift.name: "gift" for gift in items.GIFTS},
+}
+checks = Checks()
 
 
-def kind(item: str) -> str:
-    if item == "$10000":
-        return "money"
-    if item.startswith("Progressive "):
-        return "progressive"
-    if item.endswith(" Unlock"):
-        return "unlock"
-    if item.endswith(" License"):
-        return "license"
-    return "gift" if item in GIFTS else "other"
-
-
-def generate(name: str, yamls: dict[str, str], seed: int) -> tuple[int, str, str]:
-    folder = work / name
-    if folder.exists():
-        shutil.rmtree(folder)
-    (folder / "players").mkdir(parents=True)
+# Generates a room from these YAML files, by name; returns the generator's exit code, the room's spoiler ("" without a room) and what the generator wrote.
+def room(name: str, yamls: dict[str, str], seed: int) -> tuple[int, str, str]:
+    players = WORK / name / "players"
+    players.mkdir(parents=True, exist_ok=True)
     for file, text in yamls.items():
-        (folder / "players" / file).write_text(text, encoding="utf-8")
-    run = subprocess.run([str(archipelago / "ArchipelagoGenerate.exe"), "--player_files_path", str(folder / "players"), "--outputpath", str(folder), "--spoiler", "2", "--seed", str(seed)],
-                         stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    rooms = list(folder.glob("AP_*.zip"))
-    spoiler = ""
-    if rooms:
-        archive = zipfile.ZipFile(rooms[0])
-        spoiler = archive.read(next(n for n in archive.namelist() if n.endswith("_Spoiler.txt"))).decode("utf-8").replace("\r\n", "\n")
-    return run.returncode if rooms else (run.returncode or 1), spoiler, run.stdout + run.stderr
+        (players / file).write_text(text, encoding="utf-8")
+    code, archive, output = generate(WORK / name / "room", players, seed)
+    if archive is None:
+        return code, "", output
+    with zipfile.ZipFile(archive) as files:
+        spoiler = files.read(next(name for name in files.namelist() if name.endswith("_Spoiler.txt"))).decode("utf-8").replace("\r\n", "\n")
+    return code, spoiler, output
 
 
 def gta_yaml(name: str, order: str, need_money: bool, death_link: bool, start: dict[str, int], excluded: list[str] = ()) -> str:
@@ -72,6 +58,7 @@ def gta_yaml(name: str, order: str, need_money: bool, death_link: bool, start: d
     return "\n".join(lines) + "\n"
 
 
+# What a solo room's spoiler puts on each of our locations.
 def placed_solo(spoiler: str) -> dict[str, str]:
     section = spoiler.split("\nLocations:\n\n", 1)[1].split("\n\n", 1)[0]
     placed = {}
@@ -82,55 +69,55 @@ def placed_solo(spoiler: str) -> dict[str, str]:
     return placed
 
 
-def check(what: str, ok: bool, detail: str = "") -> None:
-    print(("ok  " if ok else "FAIL"), what, detail)
-    if not ok:
-        failures.append(what)
+# How many items of each kind (see KINDS) a solo room puts on our locations.
+def kinds_placed(spoiler: str) -> dict[str, int]:
+    return dict(Counter(KINDS.get(item, "other") for item in placed_solo(spoiler).values()))
+
+
+def last_line(output: str) -> str:
+    return output.strip().splitlines()[-1][:200] if output.strip() else ""
 
 
 # --- Solo rooms: every option, and each kind of item taken from the pool.
-starts = {"nothing": {}, "a license": {"Uzi License": 1}, "an unlock": None, "a weapon gift": {"Uzi": 1}, "money": {"$10000": 1}}
+starts = {"nothing": {}, "a license": {"Uzi License": 1}, "an unlock": None, "a weapon gift": {"Uzi": 1}, "money": {items.MONEY.name: 1}}
 seed = 1000
 for order, need_money, death_link, (start_name, start) in itertools.product(("ordered", "free"), (False, True), (False, True), starts.items()):
     seed += 1
     if start is None:
-        start = {"Progressive Luigi Mission": 1} if order == "ordered" else {"Don't Spank Ma Bitch Up Unlock": 1}
+        start = {missions.CONTACTS[0].progressive_item: 1} if order == "ordered" else {missions.unlock_item_name(UNLOCKS[0]): 1}
     name = f"{order}-money{int(need_money)}-dl{int(death_link)}-{start_name.replace(' ', '_')}"
-    code, spoiler, output = generate(name, {"GTA3.yaml": gta_yaml("Leiqart", order, need_money, death_link, start)}, seed)
+    code, spoiler, output = room(name, {"GTA3.yaml": gta_yaml("Leiqart", order, need_money, death_link, start)}, seed)
     if code != 0:
-        check(name, False, "generation failed: " + output.strip().splitlines()[-1][:200])
+        checks.check(name, False, "generation failed: " + last_line(output))
         continue
-    kinds = Counter(kind(item) for item in placed_solo(spoiler).values())
-    unlocks = "progressive" if order == "ordered" else "unlock"
-    removed_unlock = int(start_name == "an unlock")
-    removed_license = int(start_name == "a license")
-    expected = {unlocks: 64 - removed_unlock, "license": 9 - removed_license}
+    # An item taken from the pool leaves a $10000 in its place; one that is not in the pool (a gift, money) takes nothing out.
+    removed_unlock, removed_license = int(start_name == "an unlock"), int(start_name == "a license")
+    expected = {"progressive" if order == "ordered" else "unlock": len(UNLOCKS) - removed_unlock, "license": len(items.WEAPONS) - removed_license}
     if removed_unlock + removed_license:
         expected["money"] = removed_unlock + removed_license
     starting = re.search(r"Start Inventory from Pool:\s*(.*)", spoiler)
-    check(name, dict(kinds) == expected, f"placed {dict(kinds)}, start from pool: {starting.group(1).strip() if starting else '-'}")
+    checks.check(name, kinds_placed(spoiler) == expected, f"placed {kinds_placed(spoiler)}, start from pool: {starting.group(1).strip() if starting else '-'}")
 
-# --- Excluded locations: each one takes the place of a license, so that a $10000 goes there; past 9, a room of GTA III alone cannot fill them.
+# --- Excluded locations: each one takes the place of a license, so that a $10000 goes there; past the locations the unlocks leave, GTA III alone cannot fill them.
 excluded = ["Multistorey Mayhem", "Gripped!"]
-code, spoiler, output = generate("solo-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded)}, 2001)
+code, spoiler, output = room("solo-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded)}, 2001)
 placed = placed_solo(spoiler) if code == 0 else {}
-check("solo room with 2 excluded locations: a $10000 on each, 7 licenses left",
-      code == 0 and all(placed.get(location) == "$10000" for location in excluded) and Counter(kind(item) for item in placed.values())["license"] == 7,
-      {location: placed.get(location) for location in excluded} if code == 0 else output.strip().splitlines()[-1][:160])
+checks.check(f"solo room with 2 excluded locations: a $10000 on each, {len(items.WEAPONS) - 2} licenses left",
+             code == 0 and all(placed.get(location) == items.MONEY.name for location in excluded) and kinds_placed(spoiler).get("license") == len(items.WEAPONS) - 2,
+             {location: placed.get(location) for location in excluded} if code == 0 else last_line(output))
 many = [mission.name for mission in missions.SIDE_MISSIONS] + ["The Crook", "The Thieves"]
-code, spoiler, output = generate("solo-excluded-10", {"GTA3.yaml": gta_yaml("Leiqart", "free", False, False, {}, many)}, 2005)
-check(f"solo room with {len(many)} excluded locations, more than the 9 the unlocks leave, cannot be filled", code != 0, "it generated" if code == 0 else "")
+code, spoiler, output = room("solo-excluded-many", {"GTA3.yaml": gta_yaml("Leiqart", "free", False, False, {}, many)}, 2005)
+checks.check(f"solo room with {len(many)} excluded locations, more than the {len(missions.ALL_MISSIONS) - len(UNLOCKS)} the unlocks leave, cannot be filled",
+             code != 0, "it generated")
 hike = "name: Hiker\ngame: A Short Hike\nA Short Hike: {}\n"
-code, spoiler, output = generate("with-hike-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded), "Hike.yaml": hike}, 2002)
+code, spoiler, output = room("with-hike-excluded", {"GTA3.yaml": gta_yaml("Leiqart", "ordered", False, False, {}, excluded), "Hike.yaml": hike}, 2002)
 lines = [line.strip() for line in spoiler.splitlines() if any(line.startswith(f"{location} (Leiqart): ") for location in excluded)]
-check("with A Short Hike, 2 excluded locations get its filler", code == 0 and len(lines) == 2, "; ".join(lines) if code == 0 else output.strip().splitlines()[-1][:160])
+checks.check("with A Short Hike, 2 excluded locations get filler", code == 0 and len(lines) == 2, "; ".join(lines) if code == 0 else last_line(output))
 
 # --- Multiworld: GTA III with A Short Hike, then two GTA III slots in one room.
-code, spoiler, output = generate("with-hike", {"GTA3.yaml": gta_yaml("Leiqart", "free", True, True, {"Uzi License": 1}), "Hike.yaml": hike}, 2003)
-gta_items = [line for line in spoiler.splitlines() if re.search(r"\(Leiqart\)$", line.strip())]
-check("GTA III with A Short Hike", code == 0, f"{len(gta_items)} items of Leiqart placed in the multiworld" if code == 0 else output.strip().splitlines()[-1][:160])
-code, spoiler, output = generate("two-gta", {"GTA3a.yaml": gta_yaml("SlotOne", "ordered", False, False, {}), "GTA3b.yaml": gta_yaml("SlotTwo", "free", False, False, {})}, 2004)
-check("two GTA III slots in one room", code == 0, "" if code == 0 else output.strip().splitlines()[-1][:160])
+code, spoiler, output = room("with-hike", {"GTA3.yaml": gta_yaml("Leiqart", "free", True, True, {"Uzi License": 1}), "Hike.yaml": hike}, 2003)
+checks.check("GTA III with A Short Hike", code == 0, last_line(output))
+code, spoiler, output = room("two-gta", {"GTA3a.yaml": gta_yaml("SlotOne", "ordered", False, False, {}), "GTA3b.yaml": gta_yaml("SlotTwo", "free", False, False, {})}, 2004)
+checks.check("two GTA III slots in one room", code == 0, last_line(output))
 
-print(f"--- {len(failures)} failure(s)" + (": " + ", ".join(failures) if failures else ""))
-sys.exit(1 if failures else 0)
+sys.exit(checks.sum_up())

@@ -12,18 +12,20 @@ PLAYER_NUMBERS = ("money", "health", "armour", "in_hand")
 WEAPON_NUMBERS = range(1, 13)
 
 
+def is_count(value: object) -> bool:
+    """True for a whole number of 0 or more, as the save file and the mod's lines keep them (a JSON true or false is none)."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def clean_player(raw: object) -> dict:
     """The player's state from a save file or a line, keeping only what is valid: whole numbers of 0 or more, and weapons as [number, ammo] of a weapon the player can hold."""
-    def number(value: object) -> bool:
-        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
     if not isinstance(raw, dict):
         return {}
-    player = {name: raw[name] for name in PLAYER_NUMBERS if number(raw.get(name))}
+    player = {name: raw[name] for name in PLAYER_NUMBERS if is_count(raw.get(name))}
     weapons = raw.get("weapons", [])
     if isinstance(weapons, list):
         player["weapons"] = [[weapon[0], weapon[1]] for weapon in weapons
-                             if isinstance(weapon, list) and len(weapon) == 2 and number(weapon[0]) and weapon[0] in WEAPON_NUMBERS and number(weapon[1])]
+                             if isinstance(weapon, list) and len(weapon) == 2 and is_count(weapon[0]) and weapon[0] in WEAPON_NUMBERS and is_count(weapon[1])]
     return player
 
 

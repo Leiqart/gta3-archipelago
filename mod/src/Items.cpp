@@ -20,8 +20,10 @@ namespace {
     int g_givenIndex = 0;
     // The effects of the consumable items, as the client names them ("money"): what they gave is in the slot's save file, so a later game does not apply them again.
     std::set<std::string> g_consumables;
-    // The names of the items received since the last frame, shown together in one message.
+    // The names of the items received and not shown yet, and how many there were on the frame before: they are shown together once a frame brings no more,
+    // as the lines of one burst (a new game, a mission that closes others) can take a few frames to arrive.
     std::vector<std::string> g_received;
+    std::size_t g_receivedBefore = 0;
 
     // Does what the client says an item does: unlock a mission by its number, add money, let the shops sell a weapon by its number, or put a weapon in the player's hands;
     // false for an effect this mod does not know, or a weapon the player cannot hold.
@@ -88,10 +90,15 @@ namespace {
         g_received.push_back(name);
     }
 
-    // Runs once per frame, after the client's lines: shows the items received in this frame in one message, as many come together (a new game, a mission that closes others),
-    // and one message each would keep the screen busy for a minute. The first names are written out, the others counted.
+    // Runs once per frame: shows the items received in one message once their burst is over, as one message each would keep the screen busy for a minute.
+    // The first names are written out, the others counted.
     void ShowReceived() {
         if (g_received.empty()) return;
+        if (g_received.size() != g_receivedBefore) {
+            g_receivedBefore = g_received.size();
+            return;
+        }
+        g_receivedBefore = 0;
         constexpr std::size_t kNamesShown = 3;
         std::string text = "Received: " + g_received[0];
         for (std::size_t i = 1; i < std::min(g_received.size(), kNamesShown); ++i) text += ", " + g_received[i];
@@ -106,7 +113,6 @@ void Items::Install() {
     ClientLink::On("consumables", HandleConsumables);
     ClientLink::On("given_index", HandleGivenIndex);
     ClientLink::On("item", HandleItem);
-    // Installed after ClientLink, so it runs after the frame's lines.
     plugin::Events::gameProcessEvent += ShowReceived;
 }
 

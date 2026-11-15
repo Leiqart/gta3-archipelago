@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import os
 
@@ -9,7 +8,7 @@ from NetUtils import ClientStatus
 
 from ..items import CONSUMABLE_EFFECTS, effects_of
 from ..missions import ALL_MISSIONS, CLOSES, GOAL_MISSION, mission_named
-from .mod_link import ModLink, clean_player, player_words
+from .mod_link import ModLink, clean_player, is_count, player_words
 
 # The location of each text key the game registers when a mission is passed: the mod sends the key, the room wants the id.
 LOCATION_OF_KEY = {mission.key: mission.location_id for mission in ALL_MISSIONS}
@@ -19,7 +18,8 @@ LOST_WITH_KEY = {mission_named(closer).key: [mission_named(name).location_id for
 GOAL_KEY = next(mission.key for mission in ALL_MISSIONS if mission.name == GOAL_MISSION)
 # The folder, in Archipelago's own, of the files that keep what a slot's sessions leave for the next one.
 SAVES_FOLDER = "gta3_saves"
-# How often, in seconds, the saver compares what the game has with what the save file has, besides each "progress" line of the mod.
+# How often, in seconds, the saver compares what the game has with what the save file has. A "progress" line that counts new items is written at once;
+# the other changes (money, ammo, health), which can come every second, wait for the saver.
 SAVE_EVERY = 30
 
 
@@ -42,8 +42,8 @@ class GTA3Context(CommonContext):
         self.save_file: str | None = None
         # The seed of the room, from its RoomInfo: the save file's name starts with it, so each room has its own.
         self.room_seed: str | None = None
-        # The weapons that are items in our slot, by their number in the game, from the room's slot data; None until the room has connected us.
-        self.weapon_items: list[int] | None = None
+        # The weapons that are items in our slot, by their number in the game, from the room's slot data.
+        self.weapon_items: list[int] = []
         # Whether being busted sends a death to the DeathLink players, as the slot data says.
         self.arrest_is_death = True
 
@@ -94,24 +94,24 @@ class GTA3Context(CommonContext):
         if not isinstance(saved, dict):
             saved = {}
         given_index = saved.get("given_index")
-        valid = isinstance(given_index, int) and not isinstance(given_index, bool) and given_index >= 0
-        return {"given_index": given_index if valid else 0, "player": clean_player(saved.get("player"))}
+        return {"given_index": given_index if is_count(given_index) else 0, "player": clean_player(saved.get("player"))}
 
     # The kept values in words, for the log.
     def describe_kept(self) -> str:
         return " ".join([f"given_index={self.kept['given_index']}", *player_words(self.kept["player"])])
 
     # Compares what the game has with what the save file has: nothing to do when they are the same; otherwise writes the file whole, one change or several at once,
-    # into a new file first, then in place of the old one, so that a client closed while writing leaves the previous file.
+    # into a new file first, then in place of the old one, so that a client closed while writing leaves the previous file. kept is replaced, never changed in place,
+    # so saved can be the same dict. The log tells the saves that count new items; the others are too many.
     def save_if_changed(self) -> None:
         if self.kept is None or self.save_file is None or self.kept == self.saved:
             return
-        os.makedirs(os.path.dirname(self.save_file), exist_ok=True)
         with open(self.save_file + ".tmp", "w", encoding="utf-8") as file:
             json.dump(self.kept, file)
         os.replace(self.save_file + ".tmp", self.save_file)
-        self.saved = copy.deepcopy(self.kept)
-        logger.info("Saved for the next session: " + self.describe_kept())
+        new_items = self.saved is None or self.kept["given_index"] != self.saved["given_index"]
+        self.saved = self.kept
+        (logger.info if new_items else logger.debug)("Saved for the next session: " + self.describe_kept())
 
     # Runs in the background while the client is open: every SAVE_EVERY seconds, writes the save file if what the game has changed.
     async def saver(self) -> None:
@@ -123,12 +123,15 @@ class GTA3Context(CommonContext):
             self.save_if_changed()
 
     # Called by ModLink for each "progress given_index=<count> money=<amount> ..." line: what the game has now, all read on the same frame; the count of items applied only grows.
+    # A line that counts new items is written at once, so a session that ends soon after keeps them; the other changes wait for the saver. Both write the whole pair,
+    # which goes together, so a session that ends between two writes loses no item and gives none twice.
     async def on_mod_progress(self, applied: int, player: dict) -> None:
         if self.kept is None:
             logger.info(f"Progress given_index={applied} not kept: not connected to the room")
             return
         self.kept = {"given_index": max(applied, self.kept["given_index"]), "player": player}
-        self.save_if_changed()
+        if self.saved is None or self.kept["given_index"] != self.saved["given_index"]:
+            self.save_if_changed()
 
     # A DeathLink player died elsewhere: the client logs it as usual, and the mod kills the player.
     def on_deathlink(self, data: dict) -> None:
@@ -142,22 +145,17 @@ class GTA3Context(CommonContext):
         logger.info(f"Goal reached: {GOAL_MISSION} is passed")
 
     # Relays to the mod everything of our slot it plays by, once the room has connected us: the consumable effects and the kept values first, as a game takes them before its items,
-    # then the options, then every item received.
+    # then what the slot data says (each option, the weapons that are items), then every item received.
     def send_slot_to_mod(self) -> None:
         if self.kept is None:
             return
         self.mod.send_consumables(CONSUMABLE_EFFECTS)
         self.mod.send_given_index(self.kept["given_index"])
         self.mod.send_player(self.kept["player"])
-        self.send_options_to_mod()
-        self.send_items_to_mod()
-
-    # Relays to the mod what the room's slot data says of how our slot plays, once the room has said it: each option, then the weapons that are items.
-    def send_options_to_mod(self) -> None:
         for name, value in self.slot_options.items():
             self.mod.send_option(name, value)
-        if self.weapon_items is not None:
-            self.mod.send_weapons(self.weapon_items)
+        self.mod.send_weapons(self.weapon_items)
+        self.send_items_to_mod()
 
     # Relays to the mod the items our slot has received, from this position in the list to its end, each with what items.py says it does in the game and its name:
     # the whole list when the mod connects, the new ones as the room gives them.
@@ -195,8 +193,9 @@ class GTA3Context(CommonContext):
             if not self.room_seed:
                 logger.error("The room did not say its seed: nothing is kept between sessions")
             self.save_file = self.save_path() if self.room_seed else None
-            self.kept = self.load_kept()
-            self.saved = copy.deepcopy(self.kept)
+            if self.save_file:
+                os.makedirs(os.path.dirname(self.save_file), exist_ok=True)
+            self.kept = self.saved = self.load_kept()
             logger.info("Kept from this slot's earlier sessions: " + self.describe_kept())
             self.send_slot_to_mod()
             self.mod.set_room_connected(True)
@@ -225,7 +224,7 @@ def launch(*launch_args: str) -> None:
         await ctx.exit_event.wait()
         await saver
         ctx.mod.stop()
-        # What the game had last, in case the saver's last turn came before it.
+        # What the game had last and the saver had not written yet.
         ctx.save_if_changed()
         await ctx.shutdown()
 

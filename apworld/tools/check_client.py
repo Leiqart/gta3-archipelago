@@ -13,7 +13,8 @@ import tempfile
 import types
 from pathlib import Path
 
-repo = Path(__file__).resolve().parents[2]
+from tooling import REPO, Checks
+
 saves = tempfile.mkdtemp(prefix="gta3_saves_test_")
 
 
@@ -54,18 +55,13 @@ net = types.ModuleType("NetUtils")
 net.ClientStatus = types.SimpleNamespace(CLIENT_GOAL=30)
 sys.modules.update({"CommonClient": common, "Utils": utils, "NetUtils": net})
 package = types.ModuleType("gta3")
-package.__path__ = [str(repo / "apworld" / "gta3")]
+package.__path__ = [str(REPO / "apworld" / "gta3")]
 sys.modules["gta3"] = package
 items = importlib.import_module("gta3.items")
 client = importlib.import_module("gta3.client")
 
-failures = 0
-
-
-def check(what: str, ok: bool, detail: object = "") -> None:
-    global failures
-    failures += not ok
-    print("ok  " if ok else "FAIL", what, "" if ok else f"-> {detail}")
+checks = Checks()
+check = checks.check
 
 
 def session(seed: str = "1234", slot: int = 1, received: list[int] = ()) -> tuple[object, list[str]]:
@@ -98,8 +94,10 @@ async def main() -> None:
     await context.on_mod_progress(2, {"money": 10000, "health": 100, "armour": 0, "in_hand": 3, "weapons": [[3, 125]]})
     check("the same progress again writes nothing", save.stat().st_mtime_ns == stamp)
     await context.on_mod_progress(1, {"money": 9200, "health": 80, "armour": 0, "in_hand": 3, "weapons": [[3, 125]]})
+    check("a progress that counts no new item waits for the saver", json.loads(save.read_text(encoding="utf-8"))["player"]["money"] == 10000)
+    context.save_if_changed()
     written = json.loads(save.read_text(encoding="utf-8"))
-    check("given_index never goes back, the state follows the game", written["given_index"] == 2 and written["player"]["money"] == 9200, written)
+    check("the saver writes it; given_index never goes back, the state follows the game", written["given_index"] == 2 and written["player"]["money"] == 9200, written)
     check("no temporary file is left", not Path(str(save) + ".tmp").exists())
     await context.connection_closed()
     check("the room lost: the client forgets the slot", context.kept is None)
@@ -132,5 +130,4 @@ async def main() -> None:
 
 
 asyncio.run(main())
-print(f"--- {failures} failure(s)")
-sys.exit(1 if failures else 0)
+sys.exit(checks.sum_up())

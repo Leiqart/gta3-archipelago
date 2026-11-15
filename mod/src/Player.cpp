@@ -3,6 +3,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include "plugin.h"
@@ -25,8 +26,8 @@ using namespace plugin;
 namespace {
     // The least time between two reports, in milliseconds: ammo and money can change many times a second (a gunfight, a taxi fare), and the save file need not hear each change.
     constexpr DWORD kReportEvery = 1000;
-    // The player's weapon slots: in GTA III each weapon has its own, its number in eWeaponType (0, unarmed, holds nothing to keep).
-    constexpr int kWeaponSlots = 13;
+    // The player's weapon slots, as plugin-sdk declares them: in GTA III each weapon has its own, its number in eWeaponType (0, unarmed, holds nothing to keep).
+    constexpr int kWeaponSlots = static_cast<int>(std::extent_v<decltype(CPed::m_aWeapons)>);
 
     // The player's state as the save file keeps it; a value the file does not have is left as the game has it.
     struct State {
@@ -45,8 +46,6 @@ namespace {
     // What was last sent to the client (items applied, state), and when; none while the room is not connected, so that it is sent again once it is.
     std::optional<std::pair<int, State>> g_reported;
     DWORD g_reportedAt = 0;
-    // When weapons were last given, the saved ones or one received: the weapon put in hand takes a moment to be there, and a report sooner would save the one before.
-    DWORD g_weaponsGivenAt = 0;
     // Weapons received as items ("give_weapon"), waiting to be put in the player's hands: given only while he is free, as the game takes the weapons of a player wasted or busted.
     // They wait through a new game too: the game counts their items as applied, and a report comes only once they are given, so the save file never counts one it does not hold.
     std::vector<int> g_pendingGifts;
@@ -93,14 +92,15 @@ namespace {
         return true;
     }
 
-    // The player's state now, as the game has it.
+    // The player's state now, as the game has it. The weapon in hand is the one he selected: the script commands that give a weapon set it at once,
+    // and the ped takes it in hand a moment later, so reading the one in hand would save the weapon before.
     State Now() {
         const CPlayerPed& ped = *FindPlayerPed();
         State state;
         state.money = Info().m_nMoney;
         state.health = static_cast<int>(ped.m_fHealth);
         state.armour = static_cast<int>(ped.m_fArmour);
-        state.inHand = static_cast<int>(ped.m_aWeapons[ped.m_nCurrentWeapon].m_eWeaponType);
+        state.inHand = static_cast<int>(ped.m_aWeapons[ped.m_nSelectedWepSlot].m_eWeaponType);
         for (int slot = 1; slot < kWeaponSlots; ++slot) {
             const CWeapon& weapon = ped.m_aWeapons[slot];
             if (weapon.m_eWeaponType != WEAPONTYPE_UNARMED) state.weapons.emplace_back(static_cast<int>(weapon.m_eWeaponType), static_cast<int>(weapon.m_nAmmoTotal));
@@ -122,18 +122,17 @@ namespace {
         }
     }
 
-    // Once at the start of each new game: applies the saved state, before the game's items, which may add to it. The money at once, as it needs no player; the rest as soon as the player exists.
-    // Called again until all is given, then does nothing until the next new game.
+    // Once at the start of each new game: applies the saved state (g_saved, set by both callers), before the game's items, which may add to it.
+    // The money at once, as it needs no player; the rest as soon as the player exists. Called again until all is given, then does nothing until the next new game.
     void ApplyOnLoad() {
-        if (!g_savedMoneyGiven && g_saved && g_saved->money) {
+        if (!g_savedMoneyGiven && g_saved->money) {
             // The counter on the screen runs towards the money a few dollars a frame: it starts at the amount too.
             Info().m_nMoney = Info().m_nDisplayMoney = *g_saved->money;
         }
         g_savedMoneyGiven = true;
         if (g_savedStateGiven || !FindPlayerPed()) return;
         g_savedStateGiven = true;
-        g_weaponsGivenAt = GetTickCount();
-        if (!g_saved || *g_saved == State{}) {
+        if (*g_saved == State{}) {
             Log::Write("Player: nothing saved yet, the game starts with its own money, health and weapons");
             return;
         }
@@ -160,21 +159,24 @@ namespace {
     }
 
     // While the game runs: tells the client the count of items applied and the player's state, read together, when they change (at most once a second) and each time the room connects.
+    // Not while a weapon received waits to be given: the count already holds its item, and the state would not.
     void ReportOnRuntime() {
         // The state is read only while the player is free: dead, arrested or in a cutscene, it is passing through.
-        if (!g_savedStateGiven || !Free() || GetTickCount() - g_weaponsGivenAt < kReportEvery) return;
+        if (!g_savedStateGiven || !g_pendingGifts.empty() || !Free()) return;
         if (!ClientLink::IsConnected()) {
             g_reported.reset();
             return;
         }
+        if (g_reported && GetTickCount() - g_reportedAt < kReportEvery) return;
         const std::pair<int, State> progress{Items::Applied(), Now()};
-        if (g_reported == progress || (g_reported && GetTickCount() - g_reportedAt < kReportEvery)) return;
+        if (g_reported == progress) return;
         const std::string text = "given_index=" + std::to_string(progress.first) + " " + Describe(progress.second);
         if (!ClientLink::Send("progress " + text)) return;
+        // The log tells the first report after the room connects and each one that counts new items; the other changes (ammo, money) are too many.
+        if (!g_reported || g_reported->first != progress.first) Log::Write("Player: progress sent, " + text);
         g_reported = progress;
         g_reportedAt = GetTickCount();
         g_saved = progress.second;
-        Log::Write("Player: progress sent, " + text);
     }
 
     // Puts the weapons received as items in the player's hands, once the saved state is given and while he is free, each with the ammo the game's shops give with it.
@@ -188,7 +190,6 @@ namespace {
         }
         g_pendingGifts.clear();
         GiveWeapons(weapons);
-        g_weaponsGivenAt = GetTickCount();
         Log::Write("Player: weapons received put in hand, weapon:ammo" + given);
     }
 

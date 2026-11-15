@@ -1,7 +1,5 @@
 #include <string>
 #include "plugin.h"
-#include "CCutsceneMgr.h"
-#include "CPad.h"
 #include "CPickups.h"
 #include "CPlayerInfo.h"
 #include "CPlayerPed.h"
@@ -42,7 +40,7 @@ namespace {
 }
 
 void ShopTest::Update() {
-    if (!Settings::ShopTest() || !FindPlayerPed() || FindPlayerVehicle() || CCutsceneMgr::ms_running || CPad::GetPad(0)->DisablePlayerControls) return;
+    if (!Settings::ShopTest() || FindPlayerVehicle()) return;
     const int now = CTimer::m_snTimeInMilliseconds;
     CPlayerInfo& info = CWorld::Players[CWorld::PlayerInFocus];
     const std::string round = "Shop test " + std::to_string(g_round) + ": ";

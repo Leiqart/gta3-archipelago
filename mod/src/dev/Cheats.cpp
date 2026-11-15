@@ -33,9 +33,9 @@ namespace {
             Actions::Say(L"Cheat: position written to the log");
         }
         Autopilot::Update();
-        ShopTest::Update();
-        // The keys do nothing during a cutscene, or while a mission script has taken control of the player.
+        // The keys and the shop check do nothing during a cutscene, or while a mission script has taken control of the player.
         if (CCutsceneMgr::ms_running || CPad::GetPad(0)->DisablePlayerControls) return;
+        ShopTest::Update();
         if (KeyCheck::CheckJustDown(VK_F5) && !Actions::GoToMissionBlip()) Actions::Say(L"Cheat: no mission blip");
         if (KeyCheck::CheckJustDown(VK_F6) && Actions::KillMarkedCharacters() == 0) Actions::Say(L"Cheat: no character blip");
         // F3 and not F10, which unlocks the test missions' markers (Markers.cpp).

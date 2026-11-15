@@ -4,46 +4,46 @@
 
 An [Archipelago](https://archipelago.gg) multiworld integration for classic **Grand Theft Auto III**: passing missions sends checks, and the items you receive unlock the missions you can play.
 
-> **Alpha.** A run plays from the first mission to the goal. A new session gets back your money, health, armour and weapons, but not the missions you passed: its new game starts the story again, with every unlock received. Playing a run in one session is still the easiest for now.
+> **Alpha.** A run plays from the first mission to the goal, but a new session starts the story again: play a run in one session for now.
 
 ## How it plays
 
-- **Checks**: every story mission (65), and 8 side missions open from the start on their island: the four RC Toyz missions, the three 4x4 challenges and Multistorey Mayhem.
-- **Items**: what unlocks each story mission, and a license for each of nine weapons the shops sell (Uzi, shotgun, AK-47, M-16, sniper rifle, rocket launcher, flamethrower, Molotov cocktail, grenade). A locked mission's marker is hidden in the game; once unlocked, its marker shows on the radar and on the ground. A shop shows a weapon out of stock until you receive its license; the pistol and the body armour are sold as in the game. Each location you exclude (`exclude_locations`) takes the place of one license, from the grenade's back, so that a $10000 can go there: that weapon is then sold as in the game. A room of GTA III alone can fill 9 excluded locations at most. Weapons put straight in your hands (Pistol, Uzi, Shotgun, AK-47, M-16, Sniper Rifle, Rocket Launcher, Flamethrower, Molotov Cocktails, Grenades), with the ammo the shops give, exist as items too, though none is in the item pool yet: start with them through `start_inventory_from_pool`.
-- **Between sessions**: GTA3 Client keeps your money, health, armour, weapons with their ammo and the weapon in hand in a save file of its own, one per room, and a new game started with Run Archipelago gets them back, with the items received in the meantime. The missions passed do not come back yet.
-- **Any order**: the mod starts the marker of an unlocked mission itself when the story has not, one mission per marker at a time, and takes off the story's locks that only hold for some order (the pause between Salvatore's Called a Meeting and Chaperone, and Salvatore's lock between his missions).
-- **Islands**: they open as in the game. Staunton Island once Last Requests is passed, Shoreside Vale once A Drop in the Ocean is.
-- **Missions the story closes**: once Last Requests is passed, the Mafia's missions left in Portland can never be played; Waka-Gashira Wipeout! does the same to Kenji's, Grand Theft Aero to Two-Faced Tanner. Their checks are sent with the mission that closes them.
+- **Checks**: the 65 story missions, and 8 side missions open from the start on their island (the four RC Toyz missions, the three 4x4 challenges, Multistorey Mayhem).
+- **Items**:
+  - what unlocks each story mission: a locked mission's marker stays hidden until then;
+  - a license for nine weapons (Uzi, shotgun, AK-47, M-16, sniper rifle, rocket launcher, flamethrower, Molotov cocktail, grenade): shops show the weapon out of stock until you receive it; the pistol and the body armour are sold as in the game;
+  - $10000, the only extra item, which fills the rest of the pool.
+- **Excluded locations** (`exclude_locations`): each one takes the place of a license, from the grenade's back, and gets a $10000; that weapon is then sold as in the game. 9 at most in a room of GTA III alone.
+- **Between sessions**: GTA3 Client keeps your money, health, armour and weapons in a save file, one per room; a new game started with Run Archipelago gets them back, with the items received meanwhile. Missions passed do not come back yet.
+- **Any order**: the mod starts an unlocked mission's marker when the story has not, and lifts the story's locks that only hold for one order (Salvatore's pause between Called a Meeting and Chaperone, his lock between his missions).
+- **Islands**: Staunton Island opens with Last Requests, Shoreside Vale with A Drop in the Ocean, as in the game.
+- **Missions the story closes**: Last Requests closes the Mafia's missions left in Portland, Waka-Gashira Wipeout! Kenji's, Grand Theft Aero Two-Faced Tanner's; their checks are sent with the mission that closes them.
 - **Goal**: pass The Exchange, Catalina's final mission.
 
 ### Options
 
-| Option | Values | What it does |
-| --- | --- | --- |
-| `mission_order` | `ordered` (default), `free` | `ordered`: each contact gives a progressive item, and their missions come in story order. `free`: every mission has its own unlock and can be played in any order. |
-| `need_money` | `false` (default), `true` | `true`: Bomb Da Base: Act II asks for $100000 and The Exchange for $500000, as in the game. `false`: both start without paying. The logic counts no money either way. |
-| `death_link` | `false` (default), `true` | Archipelago's DeathLink: when you are wasted, every DeathLink player of the room dies, and when one of them dies, you are wasted. |
-| `arrest_is_death` | `true` (default), `false` | With `death_link` on: being busted counts as a death too. |
-| `start_inventory_from_pool` | items and counts, like `Uzi License: 1` | Archipelago's own: you start with these items, taken out of the item pool; each one leaves a $10000 in its place. |
+- `mission_order`: `ordered` (default), each contact gives a progressive item and their missions come in story order; `free`, each mission has its own unlock and plays in any order.
+- `need_money`: `false` (default), Bomb Da Base: Act II and The Exchange start without paying; `true`, they ask for $100000 and $500000, as in the game. The logic counts no money either way.
+- `death_link`: `false` (default) or `true`, Archipelago's DeathLink: when you are wasted, every DeathLink player of the room dies, and when one of them dies, you are wasted.
+- `arrest_is_death`: `true` (default) or `false`, with `death_link` on: being busted counts as a death too.
+- `start_inventory_from_pool`: Archipelago's own, like `Uzi License: 1`: you start with these items, and each one leaves a $10000 in the pool.
 
 ## Installation
 
-You need **GTA III for PC, version 1.0** (see [Steam version](#steam-version) for the Steam copy), [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.7 or newer, and the ASI loader [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (download its 32-bit [`Ultimate-ASI-Loader.zip`](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip), not the `_x64` one).
-
-### Release files
-
-| File | Use |
-| --- | --- |
-| `GTA3Archipelago.asi` | The game plugin. |
-| `gta3.apworld` | The GTA III world and its client, GTA3 Client, for Archipelago. |
-| `LICENSE-MinHook.txt` | The license of MinHook, which the plugin contains. |
-
-Use the plugin and the APWorld of the same release, and generate a new room for each new version.
+- **You need**:
+  - **GTA III for PC, version 1.0** (for the Steam copy, see [Steam version](#steam-version));
+  - [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.7 or newer;
+  - [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader), 32-bit: its [`Ultimate-ASI-Loader.zip`](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip), not the `_x64` one.
+- **Release files**:
+  - `GTA3Archipelago.asi`: the game plugin;
+  - `gta3.apworld`: the GTA III world and its client, GTA3 Client;
+  - `LICENSE-MinHook.txt`: the license of MinHook, which the plugin contains.
+- Use the plugin and the APWorld of the same release, and generate a new room for each new version.
 
 ### Setup
 
-1. Download [Ultimate-ASI-Loader.zip](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip) and put the `dinput8.dll` it contains next to `gta3.exe`.
-2. Create a `scripts` folder next to `gta3.exe` if there is none, and put `GTA3Archipelago.asi` in it.
+1. Put the `dinput8.dll` of [Ultimate-ASI-Loader.zip](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip) next to `gta3.exe`.
+2. Put `GTA3Archipelago.asi` in a `scripts` folder next to `gta3.exe`, created if there is none.
 3. Double-click `gta3.apworld` to install it in Archipelago (or copy it into Archipelago's `custom_worlds` folder).
 4. Write your player settings in a YAML file, for example `GTA3.yaml`, and give it to whoever generates the room:
    ```yaml
@@ -55,30 +55,27 @@ Use the plugin and the APWorld of the same release, and generate a new room for 
      death_link: false
    ```
 5. Once the room is up, open **GTA3 Client** from the Archipelago Launcher and connect to the room with your slot name.
-6. Start GTA III. The main menu's first button reads **Run Archipelago** while GTA3 Client is connected to the room (**Not connected** otherwise); it starts a new game. Keep GTA3 Client open while you play.
-
-The game shows each item you receive; passed missions reach the room through GTA3 Client, and are sent again after a reconnection.
+6. Start GTA III: the main menu's first button reads **Run Archipelago** while GTA3 Client is connected (**Not connected** otherwise) and starts a new game.
+7. Keep GTA3 Client open while you play; after a reconnection, the missions passed are sent again.
 
 ## Steam version
 
-The Steam `gta3.exe` is newer than 1.0, so downgrade it once before installing the mod:
+The Steam `gta3.exe` is newer than 1.0: downgrade it once, before installing the mod.
 
-1. In Steam, right-click **Grand Theft Auto III**, then **Manage** → **Browse local files** to open the game folder.
+1. In Steam, right-click **Grand Theft Auto III**, then **Manage** → **Browse local files**.
 2. Copy `gta3.exe` somewhere safe, for example as `gta3.exe.steam`.
-3. Replace `gta3.exe` with the 1.0 executable by following the [TJGM GTA III downgrade guide](https://tjgm.dev/guides/gtaiii/How-to-Downgrade-EVERY-Version-of-GTA-III/).
-4. Follow the [installation](#installation) steps above.
+3. Replace `gta3.exe` with the 1.0 executable, following the [TJGM GTA III downgrade guide](https://tjgm.dev/guides/gtaiii/How-to-Downgrade-EVERY-Version-of-GTA-III/).
+4. Follow the [installation](#installation) steps.
 5. Copy `SilentPatchIII.asi` and `SilentPatchIII.ini` from [SilentPatch](https://github.com/CookiePLMonster/SilentPatch) next to `gta3.exe`; without it, the 1.0 executable asks for the CD.
 
-If Steam verifies the game files, it puts its own `gta3.exe` back: redo step 3. The Rockstar Games Launcher copy works the same way once the game folder is moved out of `Program Files`.
+- If Steam verifies the game files, it puts its own `gta3.exe` back: redo step 3.
+- The Rockstar Games Launcher copy works the same way, once the game folder is moved out of `Program Files`.
 
 ## Building
 
-You need Visual Studio 2022 with the C++ x86 tools, Archipelago 0.6.7, and two libraries kept outside this repository; each one is found through an environment variable:
-
-| Library | Version | Variable | Use |
-| --- | --- | --- | --- |
-| [MinHook](https://github.com/TsudaKageyu/minhook) | commit `d94c64d` (v1.3.4 + 14) | `MINHOOK_DIR` | compiled into the ASI |
-| [plugin-sdk](https://github.com/DK22Pac/plugin-sdk) | commit `15f15b6` | `PLUGIN_SDK_DIR` | its GTA III library (`Plugin_III.lib`) is compiled into the ASI |
+- **You need** Visual Studio 2022 with the C++ x86 tools, Archipelago 0.6.7, and two libraries outside this repository, each found through an environment variable:
+  - [MinHook](https://github.com/TsudaKageyu/minhook), commit `d94c64d` (v1.3.4 + 14), `MINHOOK_DIR`: compiled into the ASI;
+  - [plugin-sdk](https://github.com/DK22Pac/plugin-sdk), commit `15f15b6`, `PLUGIN_SDK_DIR`: its GTA III library (`Plugin_III.lib`) is compiled into the ASI.
 
 ```powershell
 git clone https://github.com/TsudaKageyu/minhook.git
@@ -89,11 +86,17 @@ setx MINHOOK_DIR "C:\path\to\minhook"
 setx PLUGIN_SDK_DIR "C:\path\to\plugin-sdk"
 ```
 
-A dev build of the ASI adds an autopilot that skips the start-up videos, starts a game and plays the test missions by itself (F8 pauses it), with cheat keys: F3 fails the running mission, F5 teleports to the mission blip, F6 kills the character the mission marks, F7 gives a car, F9 writes the position to the log; never ship a dev build. The first build also compiles plugin-sdk's `Plugin_III.lib` with plugin-sdk's own tools (premake and MSBuild, about a minute); after checking out another plugin-sdk commit, delete `%PLUGIN_SDK_DIR%\output\lib\Plugin_III.lib` so the next build makes it again. With the libraries cloned next to this repository, `GTAPIII.code-workspace` opens the three folders side by side in VS Code.
+- **First build**: it also compiles `Plugin_III.lib` with plugin-sdk's own tools (premake and MSBuild, about a minute). After checking out another plugin-sdk commit, delete `%PLUGIN_SDK_DIR%\output\lib\Plugin_III.lib` so the next build makes it again.
+- **Dev build**: adds an autopilot that skips the start-up videos, starts a game and plays the test missions by itself (F8 pauses it), and cheat keys: F3 fails the running mission, F5 teleports to the mission blip, F6 kills the character the mission marks, F7 gives a car, F9 writes the position to the log. Never ship a dev build.
+- **VS Code**: with the libraries cloned next to this repository, `GTAPIII.code-workspace` opens the three folders side by side.
 
-`python apworld\tools\autotest.py` plays a test run with nothing to start by hand: it generates a room from `apworld\players`, hosts it on port 38300, opens GTA3 Client and the game (with a dev build installed), lets the autopilot play, and sums up the game's log once the run ends. With `--shop`, nobody plays: the player walks onto the Uzi of Portland's Ammu-Nation before and after the room sends its license, to check that a shop sells a weapon only with it. With `--player`, two sessions follow each other: the room sends $10000 and a Shotgun in the first, then the client's save file gets a health, an armour and an Uzi in hand, and the room two $10000 while no client is connected; the second, with a new client and a new game, must start with all of it, not apply the first $10000 and Shotgun again, apply the two sent while away in one message, and add the next ones. Close GTA3 Client first, and leave the game alone until the run ends.
+### Tests
 
-Two checks need no game: `python apworld\tools\check_client.py` checks GTA3 Client's lines to the mod and its save file, with stubs in place of Archipelago; `python apworld\tools\check_generation.py` generates a room for every combination of the options (and a few with other games) and checks what each one holds, once the apworld is installed.
+- `python apworld\tools\autotest.py` plays a test run with nothing started by hand: it generates a room from `apworld\players`, hosts it on port 38300, opens GTA3 Client and the game (with a dev build installed), lets the autopilot play, and sums up the game's log. Close GTA3 Client first, and leave the game alone until the run ends.
+  - `--shop`: nobody plays; the player walks onto the Uzi of Portland's Ammu-Nation before and after the room sends its license, to check that the shop sells it only with the license.
+  - `--player`: two sessions in a row; the second, with a new client and a new game, must get back the first one's money, health, armour and weapons, skip the items already applied, and apply those received in between.
+- `python apworld\tools\check_client.py` checks GTA3 Client's lines to the mod and its save file, with stubs in place of Archipelago and no game.
+- `python apworld\tools\check_generation.py` generates a room for every combination of the options (and a few with other games) and checks what each one holds, once the apworld is installed.
 
 ## Credits
 

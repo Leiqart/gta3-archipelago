@@ -9,8 +9,8 @@ namespace {
     // The game keeps only a pointer to a message while it shows it, so the texts stay here; it never queues more than 8.
     std::deque<std::wstring> g_texts;
     constexpr std::size_t kKeptTexts = 16;
-    // How long a text stays on the screen, in milliseconds: long enough to read, and under the 5 seconds a message may keep the screen.
-    constexpr unsigned int kShownFor = 4000;
+    // How long a text stays on the screen, in milliseconds: long enough to read, no longer.
+    constexpr unsigned int kShownFor = 3000;
 
     // The text in the wide characters the game draws, read as UTF-8.
     std::wstring Wide(const std::string& text) {
@@ -21,6 +21,8 @@ namespace {
 }
 
 void Message::Show(const std::string& text) {
+    // One text of this mod at a time: the one still on the screen or waiting gives its place to the new one, so that texts close together do not keep the screen one after the other.
+    if (!g_texts.empty()) CMessages::ClearThisPrint(g_texts.back().c_str());
     g_texts.push_back(Wide(text));
     if (g_texts.size() > kKeptTexts) g_texts.pop_front();
     CMessages::AddMessage(g_texts.back().c_str(), kShownFor, 0);

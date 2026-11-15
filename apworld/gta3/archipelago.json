@@ -1,7 +1,7 @@
 {
   "game": "Grand Theft Auto III",
   "authors": ["Leiqart"],
-  "world_version": "0.3.0",
+  "world_version": "0.4.0",
   "minimum_ap_version": "0.6.7",
   "version": 7,
   "compatible_version": 7

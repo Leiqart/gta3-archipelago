@@ -1,4 +1,4 @@
-# Grand Theft Auto III — Archipelago
+# Grand Theft Auto III - Archipelago
 
 **Claude never says a word, so the multiworld does the talking.**
 
